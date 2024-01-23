@@ -41,8 +41,8 @@
 @ stdcall SLGetLicensingStatusInformation(ptr ptr ptr wstr ptr ptr)
 @ stub SLGetPKeyId
 @ stub SLGetPKeyInformation
-@ stub SLGetPolicyInformation
-@ stub SLGetPolicyInformationDWORD
+@ stdcall SLGetPolicyInformation(ptr wstr ptr ptr ptr)
+@ stdcall SLGetPolicyInformationDWORD(ptr wstr ptr)
 @ stub SLGetProductSkuInformation
 @ stub SLGetSLIDList
 @ stub SLGetServiceInformation

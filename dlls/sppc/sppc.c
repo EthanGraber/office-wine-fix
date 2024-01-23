@@ -39,6 +39,20 @@ HRESULT WINAPI SLGetLicensingStatusInformation(HSLC handle, const SLID *app, con
     return SL_E_RIGHT_NOT_CONSUMED;
 }
 
+HRESULT WINAPI SLGetPolicyInformation(HSLC handle, PCWSTR policyName, SLDATATYPE* slDataType, UINT* dataSize, PBYTE* data)
+{
+    FIXME("(%p %s %p %p %p) stub\n", handle, debugstr_w(policyName), slDataType, dataSize, data);
+
+    return SL_E_VALUE_NOT_FOUND;
+}
+
+HRESULT WINAPI SLGetPolicyInformationDWORD(HSLC handle, PCWSTR policyName, DWORD* ret)
+{
+    FIXME("(%p %s %p) stub\n", handle, debugstr_w(policyName), ret);
+
+    return SL_E_VALUE_NOT_FOUND;
+}
+
 HRESULT WINAPI SLLoadApplicationPolicies(const SLID* app, const SLID* product, DWORD flags, HSLP* handle)
 {
     FIXME("(%p %p %lx %p) stub\n", app, product, flags, handle);
