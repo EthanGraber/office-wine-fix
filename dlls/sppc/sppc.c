@@ -39,6 +39,13 @@ HRESULT WINAPI SLGetLicensingStatusInformation(HSLC handle, const SLID *app, con
     return SL_E_RIGHT_NOT_CONSUMED;
 }
 
+HRESULT WINAPI SLLoadApplicationPolicies(const SLID* app, const SLID* product, DWORD flags, HSLP* handle)
+{
+    FIXME("(%p %p %lx %p) stub\n", app, product, flags, handle);
+
+    return SL_E_APPLICATION_POLICIES_MISSING;
+}
+
 HRESULT WINAPI SLOpen(HSLC *handle)
 {
     FIXME("(%p) stub\n", handle );
