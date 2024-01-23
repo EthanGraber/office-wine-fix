@@ -57,7 +57,7 @@
 @ stub SLReArm
 @ stub SLRegisterEvent
 @ stub SLRegisterPlugin
-@ stub SLSetAuthenticationData
+@ stdcall SLSetAuthenticationData(ptr ptr ptr)
 @ stub SLSetCurrentProductKey
 @ stub SLSetGenuineInformation
 @ stub SLUninstallLicense

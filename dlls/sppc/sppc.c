@@ -74,3 +74,9 @@ HRESULT WINAPI SLPersistApplicationPolicies(const SLID *app, const SLID *product
 
     return S_OK;
 }
+
+HRESULT WINAPI SLSetAuthenticationData(HSLC* handle, UINT* dataSize, PBYTE* data) {
+    FIXME("(%p %p %p) stub\n", handle, dataSize, data);
+
+    return SL_E_NOT_SUPPORTED;
+}
