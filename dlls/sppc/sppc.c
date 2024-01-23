@@ -86,7 +86,7 @@ HRESULT WINAPI SLConsumeRight(HSLC handle, const SLID* app, const SLID* product,
     if (!handle)
         return E_INVALIDARG;
 
-    return S_OK;
+    return SL_E_PRODUCT_SKU_NOT_INSTALLED;
 }
 
 HRESULT WINAPI SLPersistApplicationPolicies(const SLID *app, const SLID *product, DWORD flags)
