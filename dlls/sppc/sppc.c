@@ -65,6 +65,16 @@ HRESULT WINAPI SLClose(HSLC handle)
     return S_OK;
 }
 
+HRESULT WINAPI SLConsumeRight(HSLC handle, const SLID* app, const SLID* product, PCWSTR rightName, PVOID reserved)
+{
+    FIXME("(%p, %p, %p, %s, %p) stub", handle, app, product, debugstr_w(rightName), reserved);
+
+    if (!handle)
+        return E_INVALIDARG;
+
+    return S_OK;
+}
+
 HRESULT WINAPI SLPersistApplicationPolicies(const SLID *app, const SLID *product, DWORD flags)
 {
     FIXME("(%s,%s,%lx) stub\n", wine_dbgstr_guid(app), wine_dbgstr_guid(product), flags);
@@ -75,7 +85,8 @@ HRESULT WINAPI SLPersistApplicationPolicies(const SLID *app, const SLID *product
     return S_OK;
 }
 
-HRESULT WINAPI SLSetAuthenticationData(HSLC* handle, UINT* dataSize, PBYTE* data) {
+HRESULT WINAPI SLSetAuthenticationData(HSLC* handle, UINT* dataSize, PBYTE* data) 
+{
     FIXME("(%p %p %p) stub\n", handle, dataSize, data);
 
     return SL_E_NOT_SUPPORTED;
