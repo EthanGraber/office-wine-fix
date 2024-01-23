@@ -81,12 +81,13 @@ HRESULT WINAPI SLClose(HSLC handle)
 
 HRESULT WINAPI SLConsumeRight(HSLC handle, const SLID* app, const SLID* product, PCWSTR rightName, PVOID reserved)
 {
-    FIXME("(%p, %p, %p, %s, %p) stub", handle, app, product, debugstr_w(rightName), reserved);
+    FIXME("(%p, %p, %p, %s, %p) stub\n", handle, app, product, debugstr_w(rightName), reserved);
 
     if (!handle)
         return E_INVALIDARG;
 
-    return SL_E_PRODUCT_SKU_NOT_INSTALLED;
+    /* return SL_E_PRODUCT_SKU_NOT_INSTALLED; */
+    return S_OK;
 }
 
 HRESULT WINAPI SLPersistApplicationPolicies(const SLID *app, const SLID *product, DWORD flags)
