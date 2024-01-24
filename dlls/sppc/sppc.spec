@@ -62,6 +62,6 @@
 @ stub SLSetGenuineInformation
 @ stub SLUninstallLicense
 @ stub SLUninstallProofOfPurchase
-@ stub SLUnloadApplicationPolicies
+@ stdcall SLUnloadApplicationPolicies(ptr long)
 @ stub SLUnregisterEvent
 @ stub SLUnregisterPlugin
