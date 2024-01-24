@@ -106,3 +106,10 @@ HRESULT WINAPI SLSetAuthenticationData(HSLC* handle, UINT* dataSize, PBYTE* data
 
     return SL_E_NOT_SUPPORTED;
 }
+
+HRESULT WINAPI SLUnloadApplicationPolicies(HSLP handle, DWORD flags)
+{
+    FIXME("(%p %lx) stub\n", handle, flags);
+
+    return S_OK;
+}

@@ -72,6 +72,7 @@ SLCAPI HRESULT WINAPI SLGetWindowsInformationDWORD(LPCWSTR, LPDWORD);
 SLCAPI HRESULT WINAPI SLLoadApplicationPolicies(const SLID*, const SLID*, DWORD, HSLP*);
 SLCAPI HRESULT WINAPI SLOpen(HSLC*);
 SLCAPI HRESULT WINAPI SLSetAuthenticationData(HSLC*, UINT*, PBYTE*);
+SLCAPI HRESULT WINAPI SLUnloadApplicationPolicies(HSLP, DWORD);
 
 #ifdef __cplusplus
 }
