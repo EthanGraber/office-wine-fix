@@ -14,6 +14,7 @@
 
 #include <windef.h>
 #include <winbase.h>
+#include <ntuser.h>
 
 typedef unsigned int obj_handle_t;
 typedef unsigned int user_handle_t;
@@ -263,33 +264,12 @@ struct hw_msg_source
     unsigned int    origin;
 };
 
-union rawinput
+struct rawinput
 {
-    int type;
-    struct
-    {
-        int            type;
-        unsigned int   message;
-        unsigned short vkey;
-        unsigned short scan;
-    } kbd;
-    struct
-    {
-        int            type;
-        int            x;
-        int            y;
-        unsigned int   data;
-    } mouse;
-    struct
-    {
-        int            type;
-        unsigned int   device;
-        unsigned int   param;
-        unsigned short usage_page;
-        unsigned short usage;
-        unsigned int   count;
-        unsigned int   length;
-    } hid;
+    int                  type;
+    unsigned int         device;
+    unsigned int         wparam;
+    unsigned int         usage;
 };
 
 struct hardware_msg_data
@@ -300,7 +280,7 @@ struct hardware_msg_data
     unsigned int         hw_id;
     unsigned int         flags;
     struct hw_msg_source source;
-    union rawinput       rawinput;
+    struct rawinput      rawinput;
 };
 
 struct callback_msg_data
@@ -344,8 +324,9 @@ typedef union
     {
         int            type;
         unsigned int   msg;
+        lparam_t       wparam;
         lparam_t       lparam;
-        union rawinput rawinput;
+        struct hid_input hid;
     } hw;
 } hw_input_t;
 
@@ -844,7 +825,8 @@ typedef struct
     unsigned char  contains_code : 1;
     unsigned char  wine_builtin : 1;
     unsigned char  wine_fakedll : 1;
-    unsigned char  padding : 5;
+    unsigned char  is_hybrid : 1;
+    unsigned char  padding : 4;
     unsigned char  image_flags;
     unsigned int   loader_flags;
     unsigned int   header_size;
@@ -862,8 +844,7 @@ typedef struct
 
 struct rawinput_device
 {
-    unsigned short usage_page;
-    unsigned short usage;
+    unsigned int   usage;
     unsigned int   flags;
     user_handle_t  target;
 };
@@ -974,9 +955,8 @@ struct init_process_done_request
 struct init_process_done_reply
 {
     struct reply_header __header;
-    client_ptr_t entry;
     int          suspend;
-    char __pad_20[4];
+    char __pad_12[4];
 };
 
 
@@ -1134,6 +1114,8 @@ struct set_process_info_request
     int          mask;
     int          priority;
     affinity_t   affinity;
+    obj_handle_t token;
+    char __pad_36[4];
 };
 struct set_process_info_reply
 {
@@ -1141,6 +1123,7 @@ struct set_process_info_reply
 };
 #define SET_PROCESS_INFO_PRIORITY 0x01
 #define SET_PROCESS_INFO_AFFINITY 0x02
+#define SET_PROCESS_INFO_TOKEN    0x04
 
 
 
@@ -1331,12 +1314,14 @@ struct compare_objects_reply
 
 
 
-struct make_temporary_request
+struct set_object_permanence_request
 {
     struct request_header __header;
     obj_handle_t handle;
+    int          permanent;
+    char __pad_20[4];
 };
-struct make_temporary_reply
+struct set_object_permanence_reply
 {
     struct reply_header __header;
 };
@@ -2892,6 +2877,8 @@ struct get_message_request
     unsigned int    hw_id;
     unsigned int    wake_mask;
     unsigned int    changed_mask;
+    unsigned int    internal;
+    char __pad_44[4];
 };
 struct get_message_reply
 {
@@ -3846,6 +3833,18 @@ struct open_input_desktop_reply
     struct reply_header __header;
     obj_handle_t handle;
     char __pad_12[4];
+};
+
+
+
+struct set_input_desktop_request
+{
+    struct request_header __header;
+    obj_handle_t handle;
+};
+struct set_input_desktop_reply
+{
+    struct reply_header __header;
 };
 
 
@@ -5453,8 +5452,8 @@ struct get_cursor_history_reply
 struct get_rawinput_buffer_request
 {
     struct request_header __header;
-    data_size_t rawinput_size;
-    data_size_t buffer_size;
+    data_size_t header_size;
+    int         read_data;
     char __pad_20[4];
 };
 struct get_rawinput_buffer_reply
@@ -5664,7 +5663,7 @@ enum request
     REQ_set_handle_info,
     REQ_dup_handle,
     REQ_compare_objects,
-    REQ_make_temporary,
+    REQ_set_object_permanence,
     REQ_open_process,
     REQ_open_thread,
     REQ_select,
@@ -5814,6 +5813,7 @@ enum request
     REQ_create_desktop,
     REQ_open_desktop,
     REQ_open_input_desktop,
+    REQ_set_input_desktop,
     REQ_close_desktop,
     REQ_get_thread_desktop,
     REQ_set_thread_desktop,
@@ -5955,7 +5955,7 @@ union generic_request
     struct set_handle_info_request set_handle_info_request;
     struct dup_handle_request dup_handle_request;
     struct compare_objects_request compare_objects_request;
-    struct make_temporary_request make_temporary_request;
+    struct set_object_permanence_request set_object_permanence_request;
     struct open_process_request open_process_request;
     struct open_thread_request open_thread_request;
     struct select_request select_request;
@@ -6105,6 +6105,7 @@ union generic_request
     struct create_desktop_request create_desktop_request;
     struct open_desktop_request open_desktop_request;
     struct open_input_desktop_request open_input_desktop_request;
+    struct set_input_desktop_request set_input_desktop_request;
     struct close_desktop_request close_desktop_request;
     struct get_thread_desktop_request get_thread_desktop_request;
     struct set_thread_desktop_request set_thread_desktop_request;
@@ -6244,7 +6245,7 @@ union generic_reply
     struct set_handle_info_reply set_handle_info_reply;
     struct dup_handle_reply dup_handle_reply;
     struct compare_objects_reply compare_objects_reply;
-    struct make_temporary_reply make_temporary_reply;
+    struct set_object_permanence_reply set_object_permanence_reply;
     struct open_process_reply open_process_reply;
     struct open_thread_reply open_thread_reply;
     struct select_reply select_reply;
@@ -6394,6 +6395,7 @@ union generic_reply
     struct create_desktop_reply create_desktop_reply;
     struct open_desktop_reply open_desktop_reply;
     struct open_input_desktop_reply open_input_desktop_reply;
+    struct set_input_desktop_reply set_input_desktop_reply;
     struct close_desktop_reply close_desktop_reply;
     struct get_thread_desktop_reply get_thread_desktop_reply;
     struct set_thread_desktop_reply set_thread_desktop_reply;
@@ -6507,7 +6509,7 @@ union generic_reply
 
 /* ### protocol_version begin ### */
 
-#define SERVER_PROTOCOL_VERSION 786
+#define SERVER_PROTOCOL_VERSION 798
 
 /* ### protocol_version end ### */
 

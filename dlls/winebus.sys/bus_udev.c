@@ -929,6 +929,24 @@ static NTSTATUS lnxev_device_physical_effect_run(struct lnxev_device *impl, BYTE
     return STATUS_SUCCESS;
 }
 
+static NTSTATUS lnxev_device_physical_device_set_autocenter(struct unix_device *iface, BYTE percent)
+{
+    struct lnxev_device *impl = lnxev_impl_from_unix_device(iface);
+    struct input_event ie =
+    {
+        .type = EV_FF,
+        .code = FF_AUTOCENTER,
+        .value = 0xffff * percent / 100,
+    };
+
+    TRACE("iface %p, percent %#x.\n", iface, percent);
+
+    if (write(impl->base.device_fd, &ie, sizeof(ie)) == -1)
+        WARN("write failed %d %s\n", errno, strerror(errno));
+
+    return STATUS_SUCCESS;
+}
+
 static NTSTATUS lnxev_device_physical_device_control(struct unix_device *iface, USAGE control)
 {
     struct lnxev_device *impl = lnxev_impl_from_unix_device(iface);
@@ -972,6 +990,7 @@ static NTSTATUS lnxev_device_physical_device_control(struct unix_device *iface, 
             if (impl->effect_ids[i] < 0) continue;
             lnxev_device_physical_effect_run(impl, i, 0);
         }
+        lnxev_device_physical_device_set_autocenter(iface, 0);
         return STATUS_SUCCESS;
     case PID_USAGE_DC_DEVICE_RESET:
         for (i = 0; i < ARRAY_SIZE(impl->effect_ids); ++i)
@@ -981,6 +1000,7 @@ static NTSTATUS lnxev_device_physical_device_control(struct unix_device *iface, 
                 WARN("couldn't free effect, EVIOCRMFF ioctl failed: %d %s\n", errno, strerror(errno));
             impl->effect_ids[i] = -1;
         }
+        lnxev_device_physical_device_set_autocenter(iface, 100);
         return STATUS_SUCCESS;
     case PID_USAGE_DC_DEVICE_PAUSE:
         WARN("device pause not supported\n");
@@ -1312,6 +1332,7 @@ static void udev_add_device(struct udev_device *dev, int fd)
 #ifdef HAS_PROPER_INPUT_HEADER
     else if (!strcmp(subsystem, "input"))
     {
+        const USAGE_AND_PAGE device_usage = *what_am_I(dev, fd);
         static const WCHAR evdev[] = {'e','v','d','e','v',0};
         struct input_id device_id = {0};
         char buffer[MAX_PATH];
@@ -1332,6 +1353,8 @@ static void udev_add_device(struct udev_device *dev, int fd)
 
         if (!desc.serialnumber[0] && ioctl(fd, EVIOCGUNIQ(sizeof(buffer)), buffer) >= 0)
             ntdll_umbstowcs(buffer, strlen(buffer) + 1, desc.serialnumber, ARRAY_SIZE(desc.serialnumber));
+
+        desc.usages = device_usage;
     }
 #endif
 
@@ -1687,26 +1710,38 @@ static void process_monitor_event(struct udev_monitor *monitor)
 {
     struct base_device *impl;
     struct udev_device *dev;
-    const char *action;
+    const char *action, *devnode, *syspath;
 
     dev = udev_monitor_receive_device(monitor);
     if (!dev)
     {
-        FIXME("Failed to get device that has changed\n");
+        ERR("Failed to get device that has changed\n");
         return;
     }
 
     action = udev_device_get_action(dev);
-    TRACE("Received action %s for udev device %s\n", debugstr_a(action),
-          debugstr_a(udev_device_get_devnode(dev)));
+    syspath = udev_device_get_syspath(dev);
+    devnode = udev_device_get_devnode(dev);
+    TRACE("Received action %s for udev device %s (%p) devnode %s\n",
+          debugstr_a(action), debugstr_a(syspath), dev, debugstr_a(devnode));
 
-    if (!action)
-        WARN("No action received\n");
+    if (!syspath)
+        ERR("udev device %p does not have syspath!\n", dev);
+    else if (!action)
+        ERR("event for udev device %s does not have any action!\n", syspath);
+    else if (!devnode)
+    {
+        /* Pretty normal case, not all devices have associated
+         * devnodes. For example root input devices do not, but
+         * related/child mouse and event devices do.
+         */
+        TRACE("udev device %s does not have devnode, ignoring\n", syspath);
+    }
     else if (strcmp(action, "remove"))
         udev_add_device(dev, -1);
     else
     {
-        impl = find_device_from_devnode(udev_device_get_devnode(dev));
+        impl = find_device_from_devnode(devnode);
         if (impl) bus_event_queue_device_removed(&event_queue, &impl->unix_device);
         else WARN("failed to find device for udev device %p\n", dev);
     }

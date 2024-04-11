@@ -560,12 +560,14 @@ static void msvcrt_set_fd(ioinfo *fdinfo, HANDLE hand, int flag)
   ioinfo_set_unicode(fdinfo, FALSE);
   ioinfo_set_textmode(fdinfo, TEXTMODE_ANSI);
 
-  if (hand == MSVCRT_NO_CONSOLE) hand = 0;
-  switch (fdinfo-MSVCRT___pioinfo[0])
+  if (hand != MSVCRT_NO_CONSOLE)
   {
-  case 0: SetStdHandle(STD_INPUT_HANDLE,  hand); break;
-  case 1: SetStdHandle(STD_OUTPUT_HANDLE, hand); break;
-  case 2: SetStdHandle(STD_ERROR_HANDLE,  hand); break;
+    switch (fdinfo-MSVCRT___pioinfo[0])
+    {
+    case 0: SetStdHandle(STD_INPUT_HANDLE,  hand); break;
+    case 1: SetStdHandle(STD_OUTPUT_HANDLE, hand); break;
+    case 2: SetStdHandle(STD_ERROR_HANDLE,  hand); break;
+    }
   }
 }
 
@@ -604,7 +606,7 @@ static FILE* msvcrt_alloc_fp(void)
       {
           if (file<MSVCRT__iob || file>=MSVCRT__iob+_IOB_ENTRIES)
           {
-              InitializeCriticalSection(&((file_crit*)file)->crit);
+              InitializeCriticalSectionEx(&((file_crit*)file)->crit, 0, RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO);
               ((file_crit*)file)->crit.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": file_crit.crit");
           }
           MSVCRT_stream_idx++;

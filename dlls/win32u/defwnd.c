@@ -1462,8 +1462,8 @@ static void draw_close_button( HWND hwnd, HDC hdc, BOOL down, BOOL grayed )
     {
         /* Windows does not use SM_CXSMSIZE and SM_CYSMSIZE
          * it uses 11x11 for  the close button in tool window */
-        const int bmp_height = 11;
-        const int bmp_width = 11;
+        int bmp_height = muldiv( 11, get_dpi_for_window( hwnd ), 96 );
+        int bmp_width = bmp_height;
         int caption_height = get_system_metrics( SM_CYSMCAPTION );
 
         rect.top = rect.top + (caption_height - 1 - bmp_height) / 2;
@@ -2967,10 +2967,10 @@ LRESULT desktop_window_proc( HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam )
 
             if (NtUserGetAncestor( hwnd, GA_PARENT )) return FALSE;  /* refuse to create non-desktop window */
 
-            sprintf( buffer, "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                     (unsigned int)guid->Data1, guid->Data2, guid->Data3,
-                     guid->Data4[0], guid->Data4[1], guid->Data4[2], guid->Data4[3],
-                     guid->Data4[4], guid->Data4[5], guid->Data4[6], guid->Data4[7] );
+            snprintf( buffer, sizeof(buffer), "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+                      (unsigned int)guid->Data1, guid->Data2, guid->Data3,
+                      guid->Data4[0], guid->Data4[1], guid->Data4[2], guid->Data4[3],
+                      guid->Data4[4], guid->Data4[5], guid->Data4[6], guid->Data4[7] );
             NtAddAtom( bufferW, asciiz_to_unicode( bufferW, buffer ) - sizeof(WCHAR), &atom );
             NtUserSetProp( hwnd, wine_display_device_guidW, ULongToHandle( atom ) );
         }

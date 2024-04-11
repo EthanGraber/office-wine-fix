@@ -48,6 +48,7 @@
  * Interfaces
  */
 typedef struct IDirectMusicAudioPathImpl IDirectMusicAudioPathImpl;
+struct midi_parser;
 
 /*****************************************************************************
  * ClassFactory
@@ -69,6 +70,9 @@ extern HRESULT create_dmtempotrack(REFIID riid, void **ret_iface);
 extern HRESULT create_dmtimesigtrack(REFIID riid, void **ret_iface);
 extern HRESULT create_dmwavetrack(REFIID riid, void **ret_iface);
 
+/* Parse a MIDI file. Note the stream might still be modified even when this function fails. */
+extern HRESULT parse_midi(IStream *stream, IDirectMusicSegment8 *segment);
+
 extern void set_audiopath_perf_pointer(IDirectMusicAudioPath*,IDirectMusicPerformance8*);
 extern void set_audiopath_dsound_buffer(IDirectMusicAudioPath*,IDirectSoundBuffer*);
 extern void set_audiopath_primary_dsound_buffer(IDirectMusicAudioPath*,IDirectSoundBuffer*);
@@ -84,6 +88,8 @@ extern BOOL segment_state_has_track(IDirectMusicSegmentState *iface, DWORD track
 
 extern HRESULT wave_track_create_from_chunk(IStream *stream, struct chunk_entry *parent,
         IDirectMusicTrack8 **ret_iface);
+
+extern void sequence_track_set_items(IDirectMusicTrack8 *track, DMUS_IO_SEQ_ITEM *items, unsigned int count);
 
 extern HRESULT performance_get_dsound(IDirectMusicPerformance8 *iface, IDirectSound **dsound);
 extern HRESULT performance_send_segment_start(IDirectMusicPerformance8 *iface, MUSIC_TIME music_time,

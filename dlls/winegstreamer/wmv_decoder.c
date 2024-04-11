@@ -470,6 +470,8 @@ static HRESULT WINAPI media_object_GetOutputType(IMediaObject *iface, DWORD inde
     info->rcSource.bottom = height;
     info->rcTarget.right  = width;
     info->rcTarget.bottom = height;
+    info->AvgTimePerFrame = MulDiv(10000000, decoder->input_format.u.video_wmv.fps_d,
+            decoder->input_format.u.video_wmv.fps_n);
     info->bmiHeader.biSize = sizeof(info->bmiHeader);
     info->bmiHeader.biWidth  = width;
     info->bmiHeader.biHeight = height;
@@ -520,8 +522,6 @@ static HRESULT WINAPI media_object_SetInputType(IMediaObject *iface, DWORD index
     if (!amt_to_wg_format((const AM_MEDIA_TYPE *)type, &wg_format))
         return DMO_E_TYPE_NOT_ACCEPTED;
     assert(wg_format.major_type == WG_MAJOR_TYPE_VIDEO_WMV);
-    wg_format.u.video_wmv.fps_n = 0;
-    wg_format.u.video_wmv.fps_d = 0;
 
     if (flags & DMO_SET_TYPEF_TEST_ONLY)
         return S_OK;
@@ -579,8 +579,6 @@ static HRESULT WINAPI media_object_SetOutputType(IMediaObject *iface, DWORD inde
     if (!amt_to_wg_format((const AM_MEDIA_TYPE *)type, &wg_format))
         return DMO_E_TYPE_NOT_ACCEPTED;
     assert(wg_format.major_type == WG_MAJOR_TYPE_VIDEO);
-    wg_format.u.video.fps_n = 0;
-    wg_format.u.video.fps_d = 0;
 
     if (flags & DMO_SET_TYPEF_TEST_ONLY)
         return S_OK;

@@ -59,6 +59,7 @@ static const char usage[] =
 "   --nostdinc         Do not search the standard include path\n"
 "   --ns_prefix        Prefix namespaces with ABI namespace\n"
 "   --oldnames         Use old naming conventions\n"
+"   --oldtlb           Generate typelib in the old format (SLTG)\n"
 "   -o, --output=NAME  Set the output file name\n"
 "   -Otype             Type of stubs to generate (-Os, -Oi, -Oif)\n"
 "   -p                 Generate proxy\n"
@@ -106,10 +107,11 @@ int do_idfile = 0;
 int do_dlldata = 0;
 static int no_preprocess = 0;
 int old_names = 0;
+int old_typelib = 0;
 int winrt_mode = 0;
+int interpreted_mode = 0;
 int use_abi_namespace = 0;
 static int stdinc = 1;
-static enum stub_mode stub_mode = MODE_Os;
 
 char *input_name;
 char *idl_name;
@@ -153,6 +155,7 @@ enum {
     DLLDATA_ONLY_OPTION,
     LOCAL_STUBS_OPTION,
     NOSTDINC_OPTION,
+    OLD_TYPELIB_OPTION,
     PACKING_OPTION,
     PREFIX_ALL_OPTION,
     PREFIX_CLIENT_OPTION,
@@ -179,6 +182,7 @@ static const struct long_option long_options[] = {
     { "nostdinc", 0, NOSTDINC_OPTION },
     { "ns_prefix", 0, RT_NS_PREFIX },
     { "oldnames", 0, OLDNAMES_OPTION },
+    { "oldtlb", 0, OLD_TYPELIB_OPTION },
     { "output", 0, 'o' },
     { "packing", 1, PACKING_OPTION },
     { "prefix-all", 1, PREFIX_ALL_OPTION },
@@ -194,13 +198,6 @@ static const struct long_option long_options[] = {
 };
 
 static void rm_tempfile(void);
-
-enum stub_mode get_stub_mode(void)
-{
-    /* old-style interpreted stubs are not supported on 64-bit */
-    if (stub_mode == MODE_Oi && pointer_size == 8) return MODE_Oif;
-    return stub_mode;
-}
 
 static char *make_token(const char *name)
 {
@@ -590,11 +587,11 @@ static void option_callback( int optc, char *optarg )
       output_name = xstrdup(optarg);
       break;
     case 'O':
-      if (!strcmp( optarg, "s" )) stub_mode = MODE_Os;
-      else if (!strcmp( optarg, "i" )) stub_mode = MODE_Oi;
-      else if (!strcmp( optarg, "ic" )) stub_mode = MODE_Oif;
-      else if (!strcmp( optarg, "if" )) stub_mode = MODE_Oif;
-      else if (!strcmp( optarg, "icf" )) stub_mode = MODE_Oif;
+      if (!strcmp( optarg, "s" )) interpreted_mode = 0;
+      else if (!strcmp( optarg, "i" )) interpreted_mode = 1;
+      else if (!strcmp( optarg, "ic" )) interpreted_mode = 1;
+      else if (!strcmp( optarg, "if" )) interpreted_mode = 1;
+      else if (!strcmp( optarg, "icf" )) interpreted_mode = 1;
       else error( "Invalid argument '-O%s'\n", optarg );
       break;
     case 'p':
@@ -618,6 +615,9 @@ static void option_callback( int optc, char *optarg )
     case 't':
       do_everything = 0;
       do_typelib = 1;
+      break;
+    case OLD_TYPELIB_OPTION:
+      old_typelib = 1;
       break;
     case 'T':
       typelib_name = xstrdup(optarg);
@@ -835,10 +835,8 @@ int main(int argc,char *argv[])
 
   init_types();
   ret = parser_parse();
-
-  if(ret) {
-    exit(1);
-  }
+  close_all_inputs();
+  if (ret) exit(1);
 
   /* Everything has been done successfully, don't delete any files.  */
   set_everything(FALSE);

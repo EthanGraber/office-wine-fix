@@ -246,12 +246,28 @@ bool push_event(GstPad *pad, GstEvent *event)
 
 NTSTATUS wg_init_gstreamer(void *arg)
 {
+    struct wg_init_gstreamer_params *params = arg;
     char arg0[] = "wine";
     char arg1[] = "--gst-disable-registry-fork";
     char *args[] = {arg0, arg1, NULL};
     int argc = ARRAY_SIZE(args) - 1;
     char **argv = args;
     GError *err;
+
+    if (params->trace_on)
+        setenv("GST_DEBUG", "WINE:9,4", FALSE);
+    if (params->warn_on)
+        setenv("GST_DEBUG", "3", FALSE);
+    if (params->err_on)
+        setenv("GST_DEBUG", "1", FALSE);
+    setenv("GST_DEBUG_NO_COLOR", "1", FALSE);
+
+    /* GStreamer installs a temporary SEGV handler when it loads plugins
+     * to initialize its registry calling exit(-1) when any fault is caught.
+     * We need to make sure any signal reaches our signal handlers to catch
+     * and handle them, or eventually propagate the exceptions to the user.
+     */
+    gst_segtrap_set_enabled(false);
 
     if (!gst_init_check(&argc, &argv, &err))
     {

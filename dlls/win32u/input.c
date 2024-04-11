@@ -605,16 +605,6 @@ BOOL WINAPI NtUserAttachThreadInput( DWORD from, DWORD to, BOOL attach )
 }
 
 /***********************************************************************
- *           __wine_send_input  (win32u.@)
- *
- * Internal SendInput function to allow the graphics driver to inject real events.
- */
-BOOL WINAPI __wine_send_input( HWND hwnd, const INPUT *input, const RAWINPUT *rawinput )
-{
-    return set_ntstatus( send_hardware_message( hwnd, input, rawinput, 0 ));
-}
-
-/***********************************************************************
  *		update_mouse_coords
  *
  * Helper for NtUserSendInput.
@@ -693,7 +683,7 @@ UINT WINAPI NtUserSendInput( UINT count, INPUT *inputs, int size )
             update_mouse_coords( &input );
             /* fallthrough */
         case INPUT_KEYBOARD:
-            status = send_hardware_message( 0, &input, NULL, SEND_HWMSG_INJECTED );
+            status = send_hardware_message( 0, SEND_HWMSG_INJECTED, &input, 0 );
             break;
         case INPUT_HARDWARE:
             RtlSetLastWin32Error( ERROR_CALL_NOT_IMPLEMENTED );
@@ -801,8 +791,17 @@ BOOL WINAPI NtUserGetCursorInfo( CURSORINFO *info )
 
 static void check_for_events( UINT flags )
 {
+    struct peek_message_filter filter =
+    {
+        .internal = TRUE,
+        .flags = PM_REMOVE,
+    };
+    MSG msg;
+
     if (!user_driver->pProcessEvents( flags ))
         flush_window_surfaces( TRUE );
+
+    peek_message( &msg, &filter );
 }
 
 /**********************************************************************
@@ -913,7 +912,6 @@ DWORD get_input_state(void)
 static HKL get_locale_kbd_layout(void)
 {
     LCID layout;
-    LANGID langid;
 
     /* FIXME:
      *
@@ -927,19 +925,7 @@ static HKL get_locale_kbd_layout(void)
      */
 
     NtQueryDefaultLocale( TRUE, &layout );
-
-    /*
-     * Microsoft Office expects this value to be something specific
-     * for Japanese and Korean Windows with an IME the value is 0xe001
-     * We should probably check to see if an IME exists and if so then
-     * set this word properly.
-     */
-    langid = PRIMARYLANGID( LANGIDFROMLCID( layout ) );
-    if (langid == LANG_CHINESE || langid == LANG_JAPANESE || langid == LANG_KOREAN)
-        layout = MAKELONG( layout, 0xe001 ); /* IME */
-    else
-        layout = MAKELONG( layout, layout );
-
+    layout = MAKELONG( layout, layout );
     return ULongToHandle( layout );
 }
 
@@ -1355,7 +1341,7 @@ BOOL WINAPI NtUserGetKeyboardLayoutName( WCHAR *name )
 
     if (info->kbd_layout_id)
     {
-        sprintf( buffer, "%08X", info->kbd_layout_id );
+        snprintf( buffer, sizeof(buffer), "%08X", info->kbd_layout_id );
         asciiz_to_unicode( name, buffer );
         return TRUE;
     }
@@ -1363,7 +1349,7 @@ BOOL WINAPI NtUserGetKeyboardLayoutName( WCHAR *name )
     layout = NtUserGetKeyboardLayout( 0 );
     id = HandleToUlong( layout );
     if (HIWORD( id ) == LOWORD( id )) id = LOWORD( id );
-    sprintf( buffer, "%08X", id );
+    snprintf( buffer, sizeof(buffer), "%08X", id );
     asciiz_to_unicode( name, buffer );
 
     if ((hkey = reg_open_key( NULL, keyboard_layouts_keyW, sizeof(keyboard_layouts_keyW) )))
@@ -1793,10 +1779,13 @@ HWND WINAPI NtUserSetCapture( HWND hwnd )
  */
 BOOL release_capture(void)
 {
-    BOOL ret = set_capture_window( 0, 0, NULL );
+    HWND previous = NULL;
+    BOOL ret;
+
+    ret = set_capture_window( 0, 0, &previous );
 
     /* Somebody may have missed some mouse movements */
-    if (ret)
+    if (ret && previous)
     {
         INPUT input = { .type = INPUT_MOUSE };
         input.mi.dwFlags = MOUSEEVENTF_MOVE;

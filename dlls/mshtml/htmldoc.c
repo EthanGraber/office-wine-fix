@@ -1086,8 +1086,14 @@ static HRESULT WINAPI HTMLDocument_get_location(IHTMLDocument2 *iface, IHTMLLoca
 static HRESULT WINAPI HTMLDocument_get_lastModified(IHTMLDocument2 *iface, BSTR *p)
 {
     HTMLDocumentNode *This = impl_from_IHTMLDocument2(iface);
-    FIXME("(%p)->(%p)\n", This, p);
-    return E_NOTIMPL;
+    nsAString nsstr;
+    nsresult nsres;
+
+    TRACE("(%p)->(%p)\n", This, p);
+
+    nsAString_Init(&nsstr, NULL);
+    nsres = nsIDOMDocument_GetLastModified(This->dom_document, &nsstr);
+    return return_nsstr(nsres, &nsstr, p);
 }
 
 static HRESULT WINAPI HTMLDocument_put_URL(IHTMLDocument2 *iface, BSTR v)
@@ -6098,6 +6104,38 @@ static HRESULT HTMLDocumentNode_location_hook(DispatchEx *dispex, WORD flags, DI
                                 0, flags, dp, res, ei, caller);
 }
 
+static HRESULT HTMLDocumentNode_pre_handle_event(DispatchEx* dispex, DOMEvent *event)
+{
+    HTMLDocumentNode *doc = impl_from_DispatchEx(dispex);
+    switch(event->event_id) {
+    case EVENTID_DOMCONTENTLOADED: {
+        if(event->trusted && doc->window)
+            doc->window->dom_content_loaded_event_start_time = get_time_stamp();
+        break;
+    }
+    default:
+        break;
+    }
+
+    return S_OK;
+}
+
+static HRESULT HTMLDocumentNode_handle_event(DispatchEx* dispex, DOMEvent *event, BOOL *prevent_default)
+{
+    HTMLDocumentNode *doc = impl_from_DispatchEx(dispex);
+    switch(event->event_id) {
+    case EVENTID_DOMCONTENTLOADED: {
+        if(event->trusted && doc->window)
+            doc->window->dom_content_loaded_event_end_time = get_time_stamp();
+        break;
+    }
+    default:
+        break;
+    }
+
+    return S_OK;
+}
+
 static const event_target_vtbl_t HTMLDocumentNode_event_target_vtbl = {
     {
         .query_interface     = HTMLDocumentNode_query_interface,
@@ -6112,8 +6150,10 @@ static const event_target_vtbl_t HTMLDocumentNode_event_target_vtbl = {
     .get_gecko_target        = HTMLDocumentNode_get_gecko_target,
     .bind_event              = HTMLDocumentNode_bind_event,
     .get_parent_event_target = HTMLDocumentNode_get_parent_event_target,
+    .pre_handle_event        = HTMLDocumentNode_pre_handle_event,
+    .handle_event            = HTMLDocumentNode_handle_event,
     .get_cp_container        = HTMLDocumentNode_get_cp_container,
-    .set_current_event       = HTMLDocumentNode_set_current_event
+    .set_current_event       = HTMLDocumentNode_set_current_event,
 };
 
 static const NodeImplVtbl HTMLDocumentFragmentImplVtbl = {

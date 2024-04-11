@@ -20,6 +20,7 @@
 
 #include "ntdll_test.h"
 #include <winnls.h>
+#include <ddk/ntddk.h>
 #include <stdio.h>
 
 static NTSTATUS (WINAPI * pNtQuerySystemInformation)(SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG);
@@ -46,6 +47,7 @@ static NTSTATUS (WINAPI * pNtSetInformationDebugObject)(HANDLE,DEBUGOBJECTINFOCL
 static NTSTATUS (WINAPI * pDbgUiConvertStateChangeStructure)(DBGUI_WAIT_STATE_CHANGE*,DEBUG_EVENT*);
 static HANDLE   (WINAPI * pDbgUiGetThreadDebugObject)(void);
 static void     (WINAPI * pDbgUiSetThreadDebugObject)(HANDLE);
+static NTSTATUS (WINAPI * pNtSystemDebugControl)(SYSDBG_COMMAND,PVOID,ULONG,PVOID,ULONG,PULONG);
 
 static BOOL is_wow64;
 static BOOL old_wow64;
@@ -101,6 +103,7 @@ static void InitFunctionPtrs(void)
     NTDLL_GET_PROC(DbgUiConvertStateChangeStructure);
     NTDLL_GET_PROC(DbgUiGetThreadDebugObject);
     NTDLL_GET_PROC(DbgUiSetThreadDebugObject);
+    NTDLL_GET_PROC(NtSystemDebugControl);
 
     if (!IsWow64Process( GetCurrentProcess(), &is_wow64 )) is_wow64 = FALSE;
 
@@ -3735,6 +3738,100 @@ static void test_ThreadIsTerminated(void)
     ok( status == STATUS_INVALID_HANDLE, "got %#lx.\n", status );
 }
 
+static void test_system_debug_control(void)
+{
+    NTSTATUS status;
+    int class;
+
+    for (class = 0; class < SysDbgMaxInfoClass; ++class)
+    {
+        status = pNtSystemDebugControl( class, NULL, 0, NULL, 0, NULL );
+        if (is_wow64)
+        {
+            /* Most of the calls return STATUS_NOT_IMPLEMENTED on wow64. */
+            ok( status == STATUS_DEBUGGER_INACTIVE || status == STATUS_NOT_IMPLEMENTED || status == STATUS_INFO_LENGTH_MISMATCH,
+                    "class %d, got %#lx.\n", class, status );
+        }
+        else
+        {
+            ok( status == STATUS_DEBUGGER_INACTIVE || status == STATUS_ACCESS_DENIED || status == STATUS_INFO_LENGTH_MISMATCH,
+                "class %d, got %#lx.\n", class, status );
+        }
+    }
+}
+
+static void test_process_token(int argc, char **argv)
+{
+    STARTUPINFOA si = {.cb = sizeof(si)};
+    PROCESS_ACCESS_TOKEN token_info = {0};
+    TOKEN_STATISTICS stats1, stats2;
+    HANDLE token, their_token;
+    PROCESS_INFORMATION pi;
+    char cmdline[MAX_PATH];
+    NTSTATUS status;
+    DWORD size;
+    BOOL ret;
+
+    token_info.Thread = (HANDLE)0xdeadbeef;
+
+    sprintf( cmdline, "%s %s dummy", argv[0], argv[1] );
+
+    ret = CreateProcessA( NULL, cmdline, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &si, &pi );
+    ok( ret, "got error %lu\n", GetLastError() );
+
+    status = pNtSetInformationProcess( pi.hProcess, ProcessAccessToken, &token_info, sizeof(token_info) - 1 );
+    ok( status == STATUS_INFO_LENGTH_MISMATCH, "got %#lx\n", status );
+
+    status = pNtSetInformationProcess( pi.hProcess, ProcessAccessToken, &token_info, sizeof(token_info) );
+    ok( status == STATUS_INVALID_HANDLE, "got %#lx\n", status );
+
+    ret = OpenProcessToken( GetCurrentProcess(), TOKEN_QUERY | READ_CONTROL | TOKEN_DUPLICATE
+            | TOKEN_ASSIGN_PRIMARY | TOKEN_ADJUST_PRIVILEGES | TOKEN_ADJUST_DEFAULT, &token );
+    ok( ret, "got error %lu\n", GetLastError() );
+
+    token_info.Token = token;
+    status = pNtSetInformationProcess( pi.hProcess, ProcessAccessToken, &token_info, sizeof(token_info) );
+    todo_wine ok( status == STATUS_TOKEN_ALREADY_IN_USE, "got %#lx\n", status );
+
+    ret = DuplicateTokenEx( token, TOKEN_ALL_ACCESS, NULL, SecurityAnonymous, TokenImpersonation, &token_info.Token );
+    ok( ret, "got error %lu\n", GetLastError() );
+    status = pNtSetInformationProcess( pi.hProcess, ProcessAccessToken, &token_info, sizeof(token_info) );
+    todo_wine ok( status == STATUS_BAD_IMPERSONATION_LEVEL, "got %#lx\n", status );
+    CloseHandle( token_info.Token );
+
+    ret = DuplicateTokenEx( token, TOKEN_QUERY, NULL, SecurityAnonymous, TokenPrimary, &token_info.Token );
+    ok( ret, "got error %lu\n", GetLastError() );
+    status = pNtSetInformationProcess( pi.hProcess, ProcessAccessToken, &token_info, sizeof(token_info) );
+    ok( status == STATUS_ACCESS_DENIED, "got %#lx\n", status );
+    CloseHandle( token_info.Token );
+
+    ret = DuplicateTokenEx( token, TOKEN_QUERY | TOKEN_ASSIGN_PRIMARY, NULL, SecurityAnonymous, TokenPrimary, &token_info.Token );
+    ok(ret, "got error %lu\n", GetLastError());
+    status = pNtSetInformationProcess( pi.hProcess, ProcessAccessToken, &token_info, sizeof(token_info) );
+    ok( status == STATUS_SUCCESS, "got %#lx\n", status );
+
+    ret = OpenProcessToken( pi.hProcess, TOKEN_QUERY, &their_token );
+    ok( ret, "got error %lu\n", GetLastError() );
+
+    /* The tokens should be the same. */
+    ret = GetTokenInformation( token_info.Token, TokenStatistics, &stats1, sizeof(stats1), &size );
+    ok( ret, "got error %lu\n", GetLastError() );
+    ret = GetTokenInformation( their_token, TokenStatistics, &stats2, sizeof(stats2), &size );
+    ok( ret, "got error %lu\n", GetLastError() );
+    ok( !memcmp( &stats1.TokenId, &stats2.TokenId, sizeof(LUID) ), "expected same IDs\n" );
+
+    CloseHandle( token_info.Token );
+    CloseHandle( their_token );
+
+    ResumeThread( pi.hThread );
+    ret = WaitForSingleObject( pi.hProcess, 1000 );
+    ok( !ret, "got %d\n", ret );
+
+    CloseHandle( pi.hProcess );
+    CloseHandle( pi.hThread );
+    CloseHandle( token );
+}
+
 START_TEST(info)
 {
     char **argv;
@@ -3810,4 +3907,6 @@ START_TEST(info)
 
     test_ThreadEnableAlignmentFaultFixup();
     test_process_instrumentation_callback();
+    test_system_debug_control();
+    test_process_token(argc, argv);
 }

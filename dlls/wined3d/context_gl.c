@@ -578,7 +578,7 @@ static struct fbo_entry *wined3d_context_gl_create_fbo_entry(const struct wined3
     const struct wined3d_gl_info *gl_info = context_gl->gl_info;
     struct fbo_entry *entry;
 
-    entry = heap_alloc(sizeof(*entry));
+    entry = malloc(sizeof(*entry));
     wined3d_context_gl_generate_fbo_key(context_gl, &entry->key,
             render_targets, depth_stencil, color_location, ds_location);
     entry->flags = 0;
@@ -629,7 +629,7 @@ static void wined3d_context_gl_destroy_fbo_entry(struct wined3d_context_gl *cont
     }
     --context_gl->fbo_entry_count;
     list_remove(&entry->entry);
-    heap_free(entry);
+    free(entry);
 }
 
 /* Context activation is done by the caller. */
@@ -1462,12 +1462,12 @@ static void wined3d_context_gl_cleanup(struct wined3d_context_gl *context_gl)
 
         checkGLcall("context cleanup");
     }
-    heap_free(context_gl->submitted.fences);
-    heap_free(context_gl->free_pipeline_statistics_queries);
-    heap_free(context_gl->free_so_statistics_queries);
-    heap_free(context_gl->free_timestamp_queries);
-    heap_free(context_gl->free_fences);
-    heap_free(context_gl->free_occlusion_queries);
+    free(context_gl->submitted.fences);
+    free(context_gl->free_pipeline_statistics_queries);
+    free(context_gl->free_so_statistics_queries);
+    free(context_gl->free_timestamp_queries);
+    free(context_gl->free_fences);
+    free(context_gl->free_occlusion_queries);
 
     LIST_FOR_EACH_ENTRY(pipeline_statistics_query, &context_gl->pipeline_statistics_queries,
             struct wined3d_pipeline_statistics_query, entry)
@@ -1534,7 +1534,7 @@ static void wined3d_context_gl_cleanup(struct wined3d_context_gl *context_gl)
         wined3d_context_gl_destroy_fbo_entry(context_gl, entry);
     }
 
-    heap_free(context_gl->texture_type);
+    free(context_gl->texture_type);
 
     wined3d_context_gl_restore_pixel_format(context_gl);
     if (restore_ctx)
@@ -1584,8 +1584,8 @@ BOOL wined3d_context_gl_set_current(struct wined3d_context_gl *context_gl)
         {
             TRACE("Switching away from destroyed context %p.\n", old);
             wined3d_context_gl_cleanup(old);
-            heap_free((void *)old->gl_info);
-            heap_free(old);
+            free((void *)old->gl_info);
+            free(old);
         }
         else
         {
@@ -2169,7 +2169,7 @@ HRESULT wined3d_context_gl_init(struct wined3d_context_gl *context_gl, struct wi
         }
     }
 
-    if (!(context_gl->texture_type = heap_calloc(gl_info->limits.combined_samplers,
+    if (!(context_gl->texture_type = calloc(gl_info->limits.combined_samplers,
             sizeof(*context_gl->texture_type))))
         goto fail;
 
@@ -2341,7 +2341,7 @@ HRESULT wined3d_context_gl_init(struct wined3d_context_gl *context_gl, struct wi
     return WINED3D_OK;
 
 fail:
-    heap_free(context_gl->texture_type);
+    free(context_gl->texture_type);
     wined3d_release_dc(context_gl->window, context_gl->dc);
     return E_FAIL;
 }
@@ -2375,7 +2375,7 @@ void wined3d_context_gl_destroy(struct wined3d_context_gl *context_gl)
 
         /* Make a copy of gl_info for wined3d_context_gl_cleanup() use, the
          * one in wined3d_adapter may go away in the meantime. */
-        gl_info = heap_alloc(sizeof(*gl_info));
+        gl_info = malloc(sizeof(*gl_info));
         *gl_info = *context_gl->gl_info;
         context_gl->gl_info = gl_info;
         context_gl->c.destroyed = 1;
@@ -2385,7 +2385,7 @@ void wined3d_context_gl_destroy(struct wined3d_context_gl *context_gl)
 
     wined3d_context_gl_cleanup(context_gl);
     TlsSetValue(context_get_tls_idx(), NULL);
-    heap_free(context_gl);
+    free(context_gl);
 }
 
 const unsigned int *wined3d_context_gl_get_tex_unit_mapping(const struct wined3d_context_gl *context_gl,
@@ -2614,6 +2614,37 @@ void wined3d_context_gl_bind_texture(struct wined3d_context_gl *context_gl, GLen
     }
 
     checkGLcall("bind texture");
+}
+
+GLuint64 wined3d_device_gl_get_dummy_bindless_handle(const struct wined3d_device_gl *device_gl,
+        enum wined3d_shader_resource_type type)
+{
+    switch (type)
+    {
+        case WINED3D_SHADER_RESOURCE_BUFFER:
+            return device_gl->dummy_textures.bindless.tex_buffer;
+        case WINED3D_SHADER_RESOURCE_TEXTURE_1D:
+            return device_gl->dummy_textures.bindless.tex_1d;
+        case WINED3D_SHADER_RESOURCE_TEXTURE_2D:
+            return device_gl->dummy_textures.bindless.tex_2d;
+        case WINED3D_SHADER_RESOURCE_TEXTURE_3D:
+            return device_gl->dummy_textures.bindless.tex_3d;
+        case WINED3D_SHADER_RESOURCE_TEXTURE_CUBE:
+            return device_gl->dummy_textures.bindless.tex_cube;
+        case WINED3D_SHADER_RESOURCE_TEXTURE_1DARRAY:
+            return device_gl->dummy_textures.bindless.tex_1d_array;
+        case WINED3D_SHADER_RESOURCE_TEXTURE_2DARRAY:
+            return device_gl->dummy_textures.bindless.tex_2d_array;
+        case WINED3D_SHADER_RESOURCE_TEXTURE_CUBEARRAY:
+            return device_gl->dummy_textures.bindless.tex_cube_array;
+        case WINED3D_SHADER_RESOURCE_TEXTURE_2DMS:
+            return device_gl->dummy_textures.bindless.tex_2d_ms;
+        case WINED3D_SHADER_RESOURCE_TEXTURE_2DMSARRAY:
+            return device_gl->dummy_textures.bindless.tex_2d_array;
+        default:
+            FIXME("Unhandled resource type %#x.\n", type);
+            return 0;
+    }
 }
 
 static void wined3d_context_gl_poll_fences(struct wined3d_context_gl *context_gl)
@@ -4027,6 +4058,9 @@ static void wined3d_context_gl_bind_shader_resources(struct wined3d_context_gl *
         return;
     }
 
+    if (gl_info->supported[ARB_BINDLESS_TEXTURE])
+        return;
+
     tex_unit_map = wined3d_context_gl_get_tex_unit_mapping(context_gl,
             &shader->reg_maps.shader_version, &base, &count);
 
@@ -4386,17 +4420,10 @@ static BOOL context_apply_draw_state(struct wined3d_context *context,
 
     memset(context->dirty_graphics_states, 0, sizeof(context->dirty_graphics_states));
 
-    if (context->shader_update_mask & ~(1u << WINED3D_SHADER_TYPE_COMPUTE))
-    {
-        device->shader_backend->shader_select(device->shader_priv, context, state);
-        context->shader_update_mask &= 1u << WINED3D_SHADER_TYPE_COMPUTE;
-    }
-
     if (context->update_shader_resource_bindings)
     {
         for (i = 0; i < WINED3D_SHADER_TYPE_GRAPHICS_COUNT; ++i)
             wined3d_context_gl_bind_shader_resources(context_gl, state, i);
-        context->update_shader_resource_bindings = 0;
         if (gl_info->limits.combined_samplers == gl_info->limits.graphics_samplers)
             context->update_compute_shader_resource_bindings = 1;
     }
@@ -4413,11 +4440,12 @@ static BOOL context_apply_draw_state(struct wined3d_context *context,
     if (wined3d_settings.offscreen_rendering_mode == ORM_FBO)
         wined3d_context_gl_check_fbo_status(context_gl, GL_FRAMEBUFFER);
 
-    if (context->constant_update_mask)
-    {
-        device->shader_backend->shader_load_constants(device->shader_priv, context, state);
-        context->constant_update_mask = 0;
-    }
+    /* WINED3D_SHADER_CONST_PS_NP2_FIXUP may be set when binding shader
+     * resources, so constant loading needs to be done after that. */
+    device->shader_backend->shader_apply_draw_state(device->shader_priv, context, state);
+    context->shader_update_mask &= 1u << WINED3D_SHADER_TYPE_COMPUTE;
+    context->constant_update_mask = 0;
+    context->update_shader_resource_bindings = 0;
 
     context->last_was_blit = FALSE;
     context->last_was_ffp_blit = FALSE;
@@ -4449,16 +4477,11 @@ static void wined3d_context_gl_apply_compute_state(struct wined3d_context_gl *co
     }
     memset(context_gl->c.dirty_compute_states, 0, sizeof(*context_gl->c.dirty_compute_states));
 
-    if (context_gl->c.shader_update_mask & (1u << WINED3D_SHADER_TYPE_COMPUTE))
-    {
-        device->shader_backend->shader_select_compute(device->shader_priv, &context_gl->c, state);
-        context_gl->c.shader_update_mask &= ~(1u << WINED3D_SHADER_TYPE_COMPUTE);
-    }
+    device->shader_backend->shader_apply_compute_state(device->shader_priv, &context_gl->c, state);
 
     if (context_gl->c.update_compute_shader_resource_bindings)
     {
         wined3d_context_gl_bind_shader_resources(context_gl, state, WINED3D_SHADER_TYPE_COMPUTE);
-        context_gl->c.update_compute_shader_resource_bindings = 0;
         if (gl_info->limits.combined_samplers == gl_info->limits.graphics_samplers)
             context_gl->c.update_shader_resource_bindings = 1;
     }
@@ -4484,6 +4507,8 @@ static void wined3d_context_gl_apply_compute_state(struct wined3d_context_gl *co
 
     context_gl->c.last_was_blit = FALSE;
     context_gl->c.last_was_ffp_blit = FALSE;
+    context_gl->c.shader_update_mask &= ~(1u << WINED3D_SHADER_TYPE_COMPUTE);
+    context_gl->c.update_compute_shader_resource_bindings = 0;
 }
 
 void wined3d_context_gl_end_transform_feedback(struct wined3d_context_gl *context_gl)

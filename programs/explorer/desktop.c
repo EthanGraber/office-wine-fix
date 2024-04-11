@@ -841,6 +841,35 @@ static BOOL get_default_enable_shell( const WCHAR *name )
     return result;
 }
 
+static BOOL get_default_show_systray( const WCHAR *name )
+{
+    HKEY hkey;
+    BOOL found = FALSE;
+    BOOL result;
+    DWORD size = sizeof(result);
+
+    /* @@ Wine registry key: HKCU\Software\Wine\Explorer\Desktops */
+    if (name && !RegOpenKeyW( HKEY_CURRENT_USER, L"Software\\Wine\\Explorer\\Desktops", &hkey ))
+    {
+        if (!RegGetValueW( hkey, name, L"ShowSystray", RRF_RT_REG_DWORD, NULL, &result, &size ))
+            found = TRUE;
+        RegCloseKey( hkey );
+    }
+
+    /* Try again with a global Explorer setting */
+    /* @@ Wine registry key: HKCU\Software\Wine\Explorer */
+    if (!found && !RegOpenKeyW( HKEY_CURRENT_USER, L"Software\\Wine\\Explorer", &hkey ))
+    {
+        if (!RegGetValueW( hkey, NULL, L"ShowSystray", RRF_RT_REG_DWORD, NULL, &result, &size ))
+            found = TRUE;
+        RegCloseKey( hkey );
+    }
+
+    /* Default on */
+    if (!found) result = TRUE;
+    return result;
+}
+
 static void load_graphics_driver( const WCHAR *driver, GUID *guid )
 {
     static const WCHAR device_keyW[] = L"System\\CurrentControlSet\\Control\\Video\\{%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x}\\0000";
@@ -1020,7 +1049,7 @@ void manage_desktop( WCHAR *arg )
     WCHAR *cmdline = NULL, *driver = NULL;
     WCHAR *p = arg;
     const WCHAR *name = NULL;
-    BOOL enable_shell = FALSE;
+    BOOL enable_shell = FALSE, show_systray = TRUE;
     void (WINAPI *pShellDDEInit)( BOOL ) = NULL;
     HMODULE shell32;
     HANDLE thread;
@@ -1054,8 +1083,8 @@ void manage_desktop( WCHAR *arg )
         if (!get_default_desktop_size( name, &width, &height )) width = height = 0;
     }
 
-    if (name)
-        enable_shell = get_default_enable_shell( name );
+    if (name) enable_shell = get_default_enable_shell( name );
+    show_systray = get_default_show_systray( name );
 
     UuidCreate( &guid );
     TRACE( "display guid %s\n", debugstr_guid(&guid) );
@@ -1065,8 +1094,8 @@ void manage_desktop( WCHAR *arg )
     {
         DEVMODEW devmode = {.dmPelsWidth = width, .dmPelsHeight = height};
         /* magic: desktop "root" means use the root window */
-        if ((using_root = !wcsicmp( name, L"root" ))) desktop = CreateDesktopW( name, NULL, NULL, 0, DESKTOP_ALL_ACCESS, NULL );
-        else desktop = CreateDesktopW( name, NULL, &devmode, DF_WINE_CREATE_DESKTOP, DESKTOP_ALL_ACCESS, NULL );
+        if ((using_root = !wcsicmp( name, L"root" ))) desktop = CreateDesktopW( name, NULL, NULL, DF_WINE_ROOT_DESKTOP, DESKTOP_ALL_ACCESS, NULL );
+        else desktop = CreateDesktopW( name, NULL, &devmode, DF_WINE_VIRTUAL_DESKTOP, DESKTOP_ALL_ACCESS, NULL );
         if (!desktop)
         {
             ERR( "failed to create desktop %s error %ld\n", debugstr_w(name), GetLastError() );
@@ -1101,7 +1130,7 @@ void manage_desktop( WCHAR *arg )
 
         if (using_root) enable_shell = FALSE;
 
-        initialize_systray( using_root, enable_shell );
+        initialize_systray( using_root, enable_shell, show_systray );
         if (!using_root) initialize_launchers( hwnd );
 
         if ((shell32 = LoadLibraryW( L"shell32.dll" )) &&
@@ -2373,7 +2402,7 @@ static void shellwindows_init(void)
     CoInitialize(NULL);
 
     shellwindows.IShellWindows_iface.lpVtbl = &shellwindowsvtbl;
-    InitializeCriticalSection(&shellwindows.cs);
+    InitializeCriticalSectionEx(&shellwindows.cs, 0, RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO);
     shellwindows.cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": shellwindows.cs");
 
     hr = CoRegisterClassObject(&CLSID_ShellWindows,

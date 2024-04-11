@@ -47,7 +47,7 @@ BOOL is_virtual_desktop(void)
     DWORD len;
 
     if (!NtUserGetObjectInformation( desktop, UOI_FLAGS, &flags, sizeof(flags), &len )) return FALSE;
-    return !!(flags.dwFlags & DF_WINE_CREATE_DESKTOP);
+    return !!(flags.dwFlags & DF_WINE_VIRTUAL_DESKTOP);
 }
 
 /***********************************************************************
@@ -154,7 +154,7 @@ HDESK WINAPI NtUserCreateDesktopEx( OBJECT_ATTRIBUTES *attr, UNICODE_STRING *dev
     WCHAR buffer[MAX_PATH];
     HANDLE ret;
 
-    if ((device && device->Length) || (devmode && !(flags & DF_WINE_CREATE_DESKTOP)))
+    if ((device && device->Length) || (devmode && !(flags & DF_WINE_VIRTUAL_DESKTOP)))
     {
         RtlSetLastWin32Error( ERROR_INVALID_PARAMETER );
         return 0;
@@ -184,7 +184,7 @@ HDESK WINAPI NtUserCreateDesktopEx( OBJECT_ATTRIBUTES *attr, UNICODE_STRING *dev
     }
 
     /* force update display cache to use virtual desktop display settings */
-    if (flags & DF_WINE_CREATE_DESKTOP) update_display_cache( TRUE );
+    if (flags & DF_WINE_VIRTUAL_DESKTOP) update_display_cache( TRUE );
     return ret;
 }
 
@@ -291,6 +291,20 @@ HDESK WINAPI NtUserOpenInputDesktop( DWORD flags, BOOL inherit, ACCESS_MASK acce
     SERVER_END_REQ;
 
     return ret;
+}
+
+BOOL WINAPI NtUserSwitchDesktop( HDESK desktop )
+{
+    TRACE( "desktop %p\n", desktop );
+
+    SERVER_START_REQ( set_input_desktop )
+    {
+        req->handle = wine_server_obj_handle( desktop );
+        if (wine_server_call_err( req )) return FALSE;
+    }
+    SERVER_END_REQ;
+
+    return TRUE;
 }
 
 /***********************************************************************
@@ -552,7 +566,7 @@ static HANDLE get_winstations_dir_handle(void)
     NTSTATUS status;
     HANDLE dir;
 
-    sprintf( bufferA, "\\Sessions\\%u\\Windows\\WindowStations", (int)NtCurrentTeb()->Peb->SessionId );
+    snprintf( bufferA, sizeof(bufferA), "\\Sessions\\%u\\Windows\\WindowStations", (int)NtCurrentTeb()->Peb->SessionId );
     str.Buffer = buffer;
     str.MaximumLength = asciiz_to_unicode( buffer, bufferA );
     str.Length = str.MaximumLength - sizeof(WCHAR);

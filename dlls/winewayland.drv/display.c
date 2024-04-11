@@ -210,19 +210,12 @@ static void wayland_add_device_gpu(const struct gdi_device_manager *device_manag
     device_manager->add_gpu(&gpu, param);
 }
 
-static void wayland_add_device_adapter(const struct gdi_device_manager *device_manager,
-                                       void *param, INT output_id)
+static void wayland_add_device_source(const struct gdi_device_manager *device_manager,
+                                       void *param, UINT state_flags, struct output_info *output_info)
 {
-    struct gdi_adapter adapter;
-    adapter.id = output_id;
-    adapter.state_flags = DISPLAY_DEVICE_ATTACHED_TO_DESKTOP;
-    if (output_id == 0)
-        adapter.state_flags |= DISPLAY_DEVICE_PRIMARY_DEVICE;
-
-    TRACE("id=0x%s state_flags=0x%x\n",
-          wine_dbgstr_longlong(adapter.id), (UINT)adapter.state_flags);
-
-    device_manager->add_adapter(&adapter, param);
+    TRACE("name=%s state_flags=0x%x\n",
+          output_info->output->name, state_flags);
+    device_manager->add_source(output_info->output->name, state_flags, param);
 }
 
 static void wayland_add_device_monitor(const struct gdi_device_manager *device_manager,
@@ -237,11 +230,8 @@ static void wayland_add_device_monitor(const struct gdi_device_manager *device_m
     /* We don't have a direct way to get the work area in Wayland. */
     monitor.rc_work = monitor.rc_monitor;
 
-    monitor.state_flags = DISPLAY_DEVICE_ATTACHED | DISPLAY_DEVICE_ACTIVE;
-
-    TRACE("name=%s rc_monitor=rc_work=%s state_flags=0x%x\n",
-          output_info->output->name, wine_dbgstr_rect(&monitor.rc_monitor),
-          (UINT)monitor.state_flags);
+    TRACE("name=%s rc_monitor=rc_work=%s\n",
+          output_info->output->name, wine_dbgstr_rect(&monitor.rc_monitor));
 
     device_manager->add_monitor(&monitor, param);
 }
@@ -286,7 +276,7 @@ BOOL WAYLAND_UpdateDisplayDevices(const struct gdi_device_manager *device_manage
                                   BOOL force, void *param)
 {
     struct wayland_output *output;
-    INT output_id = 0;
+    DWORD state_flags = DISPLAY_DEVICE_ATTACHED_TO_DESKTOP | DISPLAY_DEVICE_PRIMARY_DEVICE;
     struct wl_array output_info_array;
     struct output_info *output_info;
 
@@ -315,10 +305,10 @@ BOOL WAYLAND_UpdateDisplayDevices(const struct gdi_device_manager *device_manage
 
     wl_array_for_each(output_info, &output_info_array)
     {
-        wayland_add_device_adapter(device_manager, param, output_id);
+        wayland_add_device_source(device_manager, param, state_flags, output_info);
         wayland_add_device_monitor(device_manager, param, output_info);
         wayland_add_device_modes(device_manager, param, output_info);
-        output_id++;
+        state_flags &= ~DISPLAY_DEVICE_PRIMARY_DEVICE;
     }
 
     wl_array_release(&output_info_array);

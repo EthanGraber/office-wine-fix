@@ -1206,6 +1206,7 @@ static void test_load_save_bmp(void)
     LARGE_INTEGER offset;
     HRESULT hr;
     LONG size;
+    ULARGE_INTEGER maxsize;
 
     desc.cbSizeofstruct = sizeof(desc);
     desc.picType = PICTYPE_BITMAP;
@@ -1251,8 +1252,18 @@ static void test_load_save_bmp(void)
     hr = IPicture_QueryInterface(pic, &IID_IPersistStream, (void **)&src_stream);
     ok(hr == S_OK, "QueryInterface error %#lx\n", hr);
 
+    maxsize.QuadPart = 0;
+    hr = IPersistStream_GetSizeMax(src_stream, &maxsize);
+    ok(hr == S_OK, "GetSizeMax error %#lx\n", hr);
+    ok(maxsize.QuadPart == 74, "expected 74, got %s\n", wine_dbgstr_longlong(maxsize.QuadPart));
+
     hr = IPersistStream_Save(src_stream, dst_stream, TRUE);
     ok(hr == S_OK, "Save error %#lx\n", hr);
+
+    maxsize.QuadPart = 0;
+    hr = IPersistStream_GetSizeMax(src_stream, &maxsize);
+    ok(hr == S_OK, "GetSizeMax error %#lx\n", hr);
+    ok(maxsize.QuadPart == 74, "expected 74, got %s\n", wine_dbgstr_longlong(maxsize.QuadPart));
 
     IPersistStream_Release(src_stream);
     IStream_Release(dst_stream);
@@ -1282,6 +1293,7 @@ static void test_load_save_icon(void)
     LARGE_INTEGER offset;
     HRESULT hr;
     LONG size;
+    ULARGE_INTEGER maxsize;
 
     desc.cbSizeofstruct = sizeof(desc);
     desc.picType = PICTYPE_ICON;
@@ -1326,8 +1338,22 @@ static void test_load_save_icon(void)
     hr = IPicture_QueryInterface(pic, &IID_IPersistStream, (void **)&src_stream);
     ok(hr == S_OK, "QueryInterface error %#lx\n", hr);
 
+    maxsize.QuadPart = 0;
+    hr = IPersistStream_GetSizeMax(src_stream, &maxsize);
+    todo_wine
+    ok(hr == S_OK, "GetSizeMax error %#lx\n", hr);
+    todo_wine
+    ok(maxsize.QuadPart == 774, "expected 774, got %s\n", wine_dbgstr_longlong(maxsize.QuadPart));
+
     hr = IPersistStream_Save(src_stream, dst_stream, TRUE);
     ok(hr == S_OK, "Saveerror %#lx\n", hr);
+
+    maxsize.QuadPart = 0;
+    hr = IPersistStream_GetSizeMax(src_stream, &maxsize);
+    todo_wine
+    ok(hr == S_OK, "GetSizeMax error %#lx\n", hr);
+    todo_wine
+    ok(maxsize.QuadPart == 774, "expected 774, got %s\n", wine_dbgstr_longlong(maxsize.QuadPart));
 
     IPersistStream_Release(src_stream);
     IStream_Release(dst_stream);
@@ -1358,6 +1384,7 @@ static void test_load_save_empty_picture(void)
     LARGE_INTEGER offset;
     HRESULT hr;
     LONG size;
+    ULARGE_INTEGER maxsize;
 
     memset(&pic, 0, sizeof(pic));
     desc.cbSizeofstruct = sizeof(desc);
@@ -1394,8 +1421,21 @@ static void test_load_save_empty_picture(void)
     hr = IPicture_QueryInterface(pic, &IID_IPersistStream, (void **)&src_stream);
     ok(hr == S_OK, "QueryInterface error %#lx\n", hr);
 
+    maxsize.QuadPart = 0;
+    hr = IPersistStream_GetSizeMax(src_stream, &maxsize);
+    ok(hr == S_OK, "GetSizeMax error %#lx\n", hr);
+    ok(maxsize.QuadPart == 8, "expected 8, got %s\n", wine_dbgstr_longlong(maxsize.QuadPart));
+
+    hr = IPersistStream_GetSizeMax(src_stream, NULL);
+    ole_expect(hr, E_INVALIDARG);
+
     hr = IPersistStream_Save(src_stream, dst_stream, TRUE);
     ok(hr == S_OK, "Save error %#lx\n", hr);
+
+    maxsize.QuadPart = 0;
+    hr = IPersistStream_GetSizeMax(src_stream, &maxsize);
+    ok(hr == S_OK, "GetSizeMax error %#lx\n", hr);
+    ok(maxsize.QuadPart == 8, "expected 8, got %s\n", wine_dbgstr_longlong(maxsize.QuadPart));
 
     mem = GlobalLock(hmem);
     ok(!memcmp(mem, "lt\0\0", 4), "got wrong stream header %04lx\n", mem[0]);

@@ -863,6 +863,11 @@ static void dump_x86_64_unwind_info( const struct runtime_function_x86_64 *funct
     }
     info = RVA( function->UnwindData, sizeof(*info) );
 
+    if (!info)
+    {
+        printf( "  no unwind info (%x)\n", function->UnwindData );
+        return;
+    }
     printf( "  unwind info at %08x\n", function->UnwindData );
     if (info->version > 2)
     {
@@ -985,7 +990,7 @@ static void dump_armnt_unwind_info( const struct runtime_function_armnt *fnc )
 {
     const struct unwind_info_armnt *info;
     const struct unwind_info_ext_armnt *infoex;
-    const struct unwind_info_epilogue_armnt *infoepi;
+    const struct unwind_info_epilogue_armnt *infoepi = NULL;
     unsigned int rva;
     WORD i, count = 0, words = 0;
 
@@ -993,18 +998,11 @@ static void dump_armnt_unwind_info( const struct runtime_function_armnt *fnc )
     {
         char intregs[32] = {0}, intregspop[32] = {0}, vfpregs[32] = {0};
         WORD pf = 0, ef = 0, fpoffset = 0, stack = fnc->StackAdjust;
+        const char *pfx = "    ...     ";
 
-        printf( "\nFunction %08x-%08x:\n", fnc->BeginAddress & ~1,
-                (fnc->BeginAddress & ~1) + fnc->FunctionLength * 2 );
-        printf( "    Flag           %x\n", fnc->Flag );
-        printf( "    FunctionLength %x\n", fnc->FunctionLength );
-        printf( "    Ret            %x\n", fnc->Ret );
-        printf( "    H              %x\n", fnc->H );
-        printf( "    Reg            %x\n", fnc->Reg );
-        printf( "    R              %x\n", fnc->R );
-        printf( "    L              %x\n", fnc->L );
-        printf( "    C              %x\n", fnc->C );
-        printf( "    StackAdjust    %x\n", fnc->StackAdjust );
+        printf( "\nFunction %08x-%08x: (flag=%u ret=%u H=%u reg=%u R=%u L=%u C=%u)\n",
+                fnc->BeginAddress & ~1, (fnc->BeginAddress & ~1) + fnc->FunctionLength * 2,
+                fnc->Flag, fnc->Ret, fnc->H, fnc->Reg, fnc->R, fnc->L, fnc->C );
 
         if (fnc->StackAdjust >= 0x03f4)
         {
@@ -1075,47 +1073,48 @@ static void dump_armnt_unwind_info( const struct runtime_function_armnt *fnc )
                 strcpy(vfpregs, "d8");
         }
 
+        printf( "  Prologue:\n" );
         if (fnc->Flag == 1) {
             if (fnc->H)
-                printf( "    Unwind Code\tpush {r0-r3}\n" );
+                printf( "%s push {r0-r3}\n", pfx );
 
             if (intregs[0])
-                printf( "    Unwind Code\tpush {%s}\n", intregs );
+                printf( "%s push {%s}\n", pfx, intregs );
 
             if (fnc->C && fpoffset == 0)
-                printf( "    Unwind Code\tmov r11, sp\n" );
+                printf( "%s mov r11, sp\n", pfx );
             else if (fnc->C)
-                printf( "    Unwind Code\tadd r11, sp, #%d\n", fpoffset * 4 );
+                printf( "%s add r11, sp, #%d\n", pfx, fpoffset * 4 );
 
             if (fnc->R && fnc->Reg != 0x07)
-                printf( "    Unwind Code\tvpush {%s}\n", vfpregs );
+                printf( "%s vpush {%s}\n", pfx, vfpregs );
 
             if (stack && !pf)
-                printf( "    Unwind Code\tsub sp, sp, #%d\n", stack * 4 );
+                printf( "%s sub sp, sp, #%d\n", pfx, stack * 4 );
         }
 
         if (fnc->Ret == 3)
             return;
-        printf( "Epilogue:\n" );
+        printf( "  Epilogue:\n" );
 
         if (stack && !ef)
-            printf( "    Unwind Code\tadd sp, sp, #%d\n", stack * 4 );
+            printf( "%s add sp, sp, #%d\n", pfx, stack * 4 );
 
         if (fnc->R && fnc->Reg != 0x07)
-            printf( "    Unwind Code\tvpop {%s}\n", vfpregs );
+            printf( "%s vpop {%s}\n", pfx, vfpregs );
 
         if (intregspop[0])
-            printf( "    Unwind Code\tpop {%s}\n", intregspop );
+            printf( "%s pop {%s}\n", pfx, intregspop );
 
         if (fnc->H && !(fnc->L && fnc->Ret == 0))
-            printf( "    Unwind Code\tadd sp, sp, #16\n" );
+            printf( "%s add sp, sp, #16\n", pfx );
         else if (fnc->H && (fnc->L && fnc->Ret == 0))
-            printf( "    Unwind Code\tldr pc, [sp], #20\n" );
+            printf( "%s ldr pc, [sp], #20\n", pfx );
 
         if (fnc->Ret == 1)
-            printf( "    Unwind Code\tbx <reg>\n" );
+            printf( "%s bx <reg>\n", pfx );
         else if (fnc->Ret == 2)
-            printf( "    Unwind Code\tb <address>\n" );
+            printf( "%s b <address>\n", pfx );
 
         return;
     }
@@ -1125,17 +1124,9 @@ static void dump_armnt_unwind_info( const struct runtime_function_armnt *fnc )
     count = info->count;
     words = info->words;
 
-    printf( "\nFunction %08x-%08x:\n", fnc->BeginAddress & ~1,
-            (fnc->BeginAddress & ~1) + info->function_length * 2 );
-    printf( "  unwind info at %08x\n", fnc->UnwindData );
-    printf( "    Flag           %x\n", fnc->Flag );
-    printf( "    FunctionLength %x\n", info->function_length );
-    printf( "    Version        %x\n", info->version );
-    printf( "    X              %x\n", info->x );
-    printf( "    E              %x\n", info->e );
-    printf( "    F              %x\n", info->f );
-    printf( "    Count          %x\n", count );
-    printf( "    Words          %x\n", words );
+    printf( "\nFunction %08x-%08x: (ver=%u X=%u E=%u F=%u)\n", fnc->BeginAddress & ~1,
+            (fnc->BeginAddress & ~1) + info->function_length * 2,
+            info->version, info->x, info->e, info->f );
 
     if (!info->count && !info->words)
     {
@@ -1143,26 +1134,13 @@ static void dump_armnt_unwind_info( const struct runtime_function_armnt *fnc )
         rva = rva + sizeof(*infoex);
         count = infoex->excount;
         words = infoex->exwords;
-        printf( "    ExtCount       %x\n", count );
-        printf( "    ExtWords       %x\n", words );
     }
 
-    if (!info->e)
+     if (!info->e)
     {
         infoepi = RVA( rva, count * sizeof(*infoepi) );
         rva = rva + count * sizeof(*infoepi);
-
-        for (i = 0; i < count; i++)
-        {
-            printf( "    Epilogue Scope %x\n", i );
-            printf( "      Offset       %x\n", infoepi[i].offset );
-            printf( "      Reserved     %x\n", infoepi[i].res );
-            printf( "      Condition    %x\n", infoepi[i].cond );
-            printf( "      Index        %x\n", infoepi[i].index );
-        }
     }
-    else
-        infoepi = NULL;
 
     if (words)
     {
@@ -1174,6 +1152,7 @@ static void dump_armnt_unwind_info( const struct runtime_function_armnt *fnc )
         rva = rva + words * sizeof(*codes);
         bytes = (BYTE*)codes;
 
+        printf( "  Prologue:\n" );
         for (b = 0; b < words * sizeof(*codes); b++)
         {
             BYTE code = bytes[b];
@@ -1181,7 +1160,7 @@ static void dump_armnt_unwind_info( const struct runtime_function_armnt *fnc )
 
             if (info->e && b == count)
             {
-                printf( "Epilogue:\n" );
+                printf( "  Epilogue:\n" );
                 inepilogue = TRUE;
             }
             else if (!info->e && infoepi)
@@ -1189,16 +1168,17 @@ static void dump_armnt_unwind_info( const struct runtime_function_armnt *fnc )
                 for (i = 0; i < count; i++)
                     if (b == infoepi[i].index)
                     {
-                        printf( "Epilogue from Scope %x at %08x:\n", i,
-                                (fnc->BeginAddress & ~1) + infoepi[i].offset * 2 );
+                        printf( "  Epilogue %u at %08x: (res=%x cond=%x)\n", i,
+                                (fnc->BeginAddress & ~1) + infoepi[i].offset * 2,
+                                infoepi[i].res, infoepi[i].cond );
                         inepilogue = TRUE;
                     }
             }
 
-            printf( "    Unwind Code");
+            printf( "   ");
             for (i = 0; i < len; i++)
                 printf( " %02x", bytes[b+i] );
-            printf( "\t" );
+            printf( " %*s", 3 * (3 - len), "" );
 
             if (code == 0x00)
                 printf( "\n" );
@@ -1232,16 +1212,16 @@ static void dump_armnt_unwind_info( const struct runtime_function_armnt *fnc )
                     printf( "mov sp, r%u\n", code & 0x0f );
                 else
                     printf( "mov r%u, sp\n", code & 0x0f );
+            else if (code <= 0xd3)
+                printf( "%s {r4-r%u}\n", inepilogue ? "pop" : "push", (code & 0x03) + 4 );
+            else if (code <= 0xd4)
+                printf( "%s {r4, %s}\n", inepilogue ? "pop" : "push", inepilogue ? "pc" : "lr" );
             else if (code <= 0xd7)
-                if (inepilogue)
-                    printf( "pop {r4-r%u%s}\n", (code & 0x03) + 4, (code & 0x04) ? ", pc" : "" );
-                else
-                    printf( "push {r4-r%u%s}\n", (code & 0x03) + 4, (code & 0x04) ? ", lr" : "" );
+                printf( "%s {r4-r%u, %s}\n", inepilogue ? "pop" : "push", (code & 0x03) + 4, inepilogue ? "pc" : "lr" );
+            else if (code <= 0xdb)
+                printf( "%s {r4-r%u}\n", inepilogue ? "pop" : "push", (code & 0x03) + 8 );
             else if (code <= 0xdf)
-                if (inepilogue)
-                    printf( "pop {r4-r%u%s}\n", (code & 0x03) + 8, (code & 0x04) ? ", pc" : "" );
-                else
-                    printf( "push {r4-r%u%s}\n", (code & 0x03) + 8, (code & 0x04) ? ", lr" : "" );
+                printf( "%s {r4-r%u, %s}\n", inepilogue ? "pop" : "push", (code & 0x03) + 8, inepilogue ? "pc" : "lr" );
             else if (code <= 0xe7)
                 printf( "%s {d8-d%u}\n", inepilogue ? "vpop" : "vpush", (code & 0x07) + 8 );
             else if (code <= 0xeb)
@@ -1420,7 +1400,7 @@ static const BYTE code_lengths[256] =
 /* 80 */ 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
 /* a0 */ 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
 /* c0 */ 2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
-/* e0 */ 4,1,2,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+/* e0 */ 4,1,2,1,1,1,1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
 };
 
 static void dump_arm64_codes( const BYTE *ptr, unsigned int count )
@@ -1431,8 +1411,7 @@ static void dump_arm64_codes( const BYTE *ptr, unsigned int count )
     {
         BYTE len = code_lengths[ptr[i]];
         unsigned int val = ptr[i];
-        if (len == 2) val = ptr[i] * 0x100 + ptr[i+1];
-        else if (len == 4) val = ptr[i] * 0x1000000 + ptr[i+1] * 0x10000 + ptr[i+2] * 0x100 + ptr[i+3];
+        for (j = 1; j < len; j++) val = val * 0x100 + ptr[i + j];
 
         printf( "    %04x: ", i );
         for (j = 0; j < 4; j++)
@@ -1445,15 +1424,15 @@ static void dump_arm64_codes( const BYTE *ptr, unsigned int count )
         }
         else if (ptr[i] < 0x40)  /* save_r19r20_x */
         {
-            printf( "stp r19,r20,[sp,-#%#x]!\n", 8 * (val & 0x1f) );
+            printf( "stp x19,x20,[sp,-#%#x]!\n", 8 * (val & 0x1f) );
         }
         else if (ptr[i] < 0x80) /* save_fplr */
         {
-            printf( "stp r29,lr,[sp,#%#x]\n", 8 * (val & 0x3f) );
+            printf( "stp x29,lr,[sp,#%#x]\n", 8 * (val & 0x3f) );
         }
         else if (ptr[i] < 0xc0)  /* save_fplr_x */
         {
-            printf( "stp r29,lr,[sp,-#%#x]!\n", 8 * (val & 0x3f) + 8 );
+            printf( "stp x29,lr,[sp,-#%#x]!\n", 8 * (val & 0x3f) + 8 );
         }
         else if (ptr[i] < 0xc8)  /* alloc_m */
         {
@@ -1462,27 +1441,27 @@ static void dump_arm64_codes( const BYTE *ptr, unsigned int count )
         else if (ptr[i] < 0xcc)  /* save_regp */
         {
             int reg = 19 + ((val >> 6) & 0xf);
-            printf( "stp r%u,r%u,[sp,#%#x]\n", reg, reg + 1, 8 * (val & 0x3f) );
+            printf( "stp x%u,x%u,[sp,#%#x]\n", reg, reg + 1, 8 * (val & 0x3f) );
         }
         else if (ptr[i] < 0xd0)  /* save_regp_x */
         {
             int reg = 19 + ((val >> 6) & 0xf);
-            printf( "stp r%u,r%u,[sp,-#%#x]!\n", reg, reg + 1, 8 * (val & 0x3f) + 8 );
+            printf( "stp x%u,x%u,[sp,-#%#x]!\n", reg, reg + 1, 8 * (val & 0x3f) + 8 );
         }
         else if (ptr[i] < 0xd4)  /* save_reg */
         {
             int reg = 19 + ((val >> 6) & 0xf);
-            printf( "str r%u,[sp,#%#x]\n", reg, 8 * (val & 0x3f) );
+            printf( "str x%u,[sp,#%#x]\n", reg, 8 * (val & 0x3f) );
         }
         else if (ptr[i] < 0xd6)  /* save_reg_x */
         {
             int reg = 19 + ((val >> 5) & 0xf);
-            printf( "str r%u,[sp,-#%#x]!\n", reg, 8 * (val & 0x1f) + 8 );
+            printf( "str x%u,[sp,-#%#x]!\n", reg, 8 * (val & 0x1f) + 8 );
         }
         else if (ptr[i] < 0xd8)  /* save_lrpair */
         {
             int reg = 19 + 2 * ((val >> 6) & 0x7);
-            printf( "stp r%u,lr,[sp,#%#x]\n", reg, 8 * (val & 0x3f) );
+            printf( "stp x%u,lr,[sp,#%#x]\n", reg, 8 * (val & 0x3f) );
         }
         else if (ptr[i] < 0xda)  /* save_fregp */
         {
@@ -1532,21 +1511,18 @@ static void dump_arm64_codes( const BYTE *ptr, unsigned int count )
         {
             printf( "save_next\n" );
         }
-        else if (ptr[i] == 0xe7)  /* arithmetic */
+        else if (ptr[i] == 0xe7)  /* save_any_reg */
         {
-            switch ((val >> 4) & 0x0f)
-            {
-            case 0: printf( "add lr,lr,x28\n" ); break;
-            case 1: printf( "add lr,lr,sp\n" ); break;
-            case 2: printf( "sub lr,lr,x28\n" ); break;
-            case 3: printf( "sub lr,lr,sp\n" ); break;
-            case 4: printf( "eor lr,lr,x28\n" ); break;
-            case 5: printf( "eor lr,lr,sp\n" ); break;
-            case 6: printf( "rol lr,lr,neg x28\n" ); break;
-            case 8: printf( "ror lr,lr,x28\n" ); break;
-            case 9: printf( "ror lr,lr,sp\n" ); break;
-            default:printf( "unknown op\n" ); break;
-            }
+            char reg = "xdq?"[(val >> 6) & 3];
+            int num = (val >> 8) & 0x1f;
+            if (val & 0x4000)
+                printf( "stp %c%u,%c%u", reg, num, reg, num + 1 );
+            else
+                printf( "str %c%u,", reg, num );
+            if (val & 0x2000)
+                printf( "[sp,#-%#x]!\n", 16 * (val & 0x3f) + 16 );
+            else
+                printf( "[sp,#%#x]\n", (val & 0x3f) * ((val & 0x4080) ? 16 : 8) );
         }
         else if (ptr[i] == 0xe8)  /* MSFT_OP_TRAP_FRAME */
         {
@@ -1670,17 +1646,27 @@ static void dump_arm64_unwind_info( const struct runtime_function_arm64 *func )
     const struct unwind_info_arm64 *info;
     const struct unwind_info_ext_arm64 *infoex;
     const struct unwind_info_epilog_arm64 *infoepi;
+    const struct runtime_function_arm64 *parent_func;
     const BYTE *ptr;
     unsigned int i, rva, codes, epilogs;
 
-    if (func->Flag)
+    switch (func->Flag)
     {
+    case 1:
+    case 2:
         printf( "\nFunction %08x-%08x:\n", func->BeginAddress,
                 func->BeginAddress + func->FunctionLength * 4 );
         printf( "    len=%#x flag=%x regF=%u regI=%u H=%u CR=%u frame=%x\n",
                 func->FunctionLength, func->Flag, func->RegF, func->RegI,
                 func->H, func->CR, func->FrameSize );
         dump_arm64_packed_info( func );
+        return;
+    case 3:
+        rva = func->UnwindData & ~3;
+        parent_func = RVA( rva, sizeof(*parent_func) );
+        printf( "\nFunction %08x-%08x:\n", func->BeginAddress,
+                func->BeginAddress + 12 /* adrl x16, <dest>; br x16 */ );
+        printf( "    forward to parent %08x\n", parent_func->BeginAddress );
         return;
     }
 
@@ -1925,6 +1911,15 @@ static void dump_hybrid_metadata(void)
         printf( "  ExtraRFETableSize                      %#x\n", (int)data->ExtraRFETableSize );
         printf( "  __os_arm64x_dispatch_fptr              %#x\n", (int)data->__os_arm64x_dispatch_fptr );
         printf( "  AuxiliaryIATCopy                       %#x\n", (int)data->AuxiliaryIATCopy );
+        printf( "  __os_arm64x_helper0                    %#x\n", (int)data->__os_arm64x_helper0 );
+        printf( "  __os_arm64x_helper1                    %#x\n", (int)data->__os_arm64x_helper1 );
+        printf( "  __os_arm64x_helper2                    %#x\n", (int)data->__os_arm64x_helper2 );
+        printf( "  __os_arm64x_helper3                    %#x\n", (int)data->__os_arm64x_helper3 );
+        printf( "  __os_arm64x_helper4                    %#x\n", (int)data->__os_arm64x_helper4 );
+        printf( "  __os_arm64x_helper5                    %#x\n", (int)data->__os_arm64x_helper5 );
+        printf( "  __os_arm64x_helper6                    %#x\n", (int)data->__os_arm64x_helper6 );
+        printf( "  __os_arm64x_helper7                    %#x\n", (int)data->__os_arm64x_helper7 );
+        printf( "  __os_arm64x_helper8                    %#x\n", (int)data->__os_arm64x_helper8 );
 
         if (data->CodeMap)
         {

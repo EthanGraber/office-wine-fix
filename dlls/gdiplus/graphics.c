@@ -34,6 +34,7 @@
 #include "winreg.h"
 #include "shlwapi.h"
 
+#include "mlang.h"
 #include "gdiplus.h"
 #include "gdiplus_private.h"
 #include "wine/debug.h"
@@ -2295,7 +2296,7 @@ void get_log_fontW(const GpFont *font, GpGraphics *graphics, LOGFONTW *lf)
     lstrcpyW(lf->lfFaceName, font->family->FamilyName);
 }
 
-static void get_font_hfont(GpGraphics *graphics, GDIPCONST GpFont *font,
+void get_font_hfont(GpGraphics *graphics, GDIPCONST GpFont *font,
                            GDIPCONST GpStringFormat *format, HFONT *hfont,
                            LOGFONTW *lfw_return, GDIPCONST GpMatrix *matrix)
 {
@@ -5197,7 +5198,110 @@ GpStatus WINGDIPAPI GdipIsVisibleRectI(GpGraphics *graphics, INT x, INT y, INT w
     return GdipIsVisibleRect(graphics, (REAL)x, (REAL)y, (REAL)width, (REAL)height, result);
 }
 
-GpStatus gdip_format_string(HDC hdc,
+/* Populates gdip_font_link_info struct based on the base_font and input string */
+static void generate_font_link_info(struct gdip_format_string_info *info, DWORD length, GDIPCONST GpFont *base_font)
+{
+    IUnknown *unk;
+    IMLangFontLink *iMLFL;
+    GpFont *gpfont;
+    HFONT map_hfont, hfont, old_font;
+    LONG processed, progress = 0;
+    struct gdip_font_link_section *section;
+    DWORD font_codepages, string_codepages;
+
+    list_init(&info->font_link_info.sections);
+    info->font_link_info.base_font = base_font;
+
+    GetGlobalFontLinkObject((void**)&unk);
+    IUnknown_QueryInterface(unk, &IID_IMLangFontLink, (void**)&iMLFL);
+    IUnknown_Release(unk);
+
+    get_font_hfont(info->graphics, base_font, NULL, &hfont, NULL, NULL);
+    IMLangFontLink_GetFontCodePages(iMLFL, info->hdc, hfont, &font_codepages);
+
+    while (progress < length)
+    {
+        section = calloc(1, sizeof(*section));
+        section->start = progress;
+        IMLangFontLink_GetStrCodePages(iMLFL, &info->string[progress], length - progress,
+                                        font_codepages, &string_codepages, &processed);
+
+        if (font_codepages & string_codepages)
+        {
+            section->font = (GpFont *)base_font;
+        }
+        else
+        {
+            IMLangFontLink_MapFont(iMLFL, info->hdc, string_codepages, hfont, &map_hfont);
+            old_font = SelectObject(info->hdc, map_hfont);
+            GdipCreateFontFromDC(info->hdc, &gpfont);
+            SelectObject(info->hdc, old_font);
+            IMLangFontLink_ReleaseFont(iMLFL, map_hfont);
+            section->font = gpfont;
+        }
+
+        section->end = section->start + processed;
+        list_add_tail(&info->font_link_info.sections, &section->entry);
+        progress += processed;
+    }
+
+    DeleteObject(hfont);
+    IMLangFontLink_Release(iMLFL);
+}
+
+static void font_link_get_text_extent_point(struct gdip_format_string_info *info,
+                                            INT index, int length, int max_ext, LPINT fit, SIZE *size)
+{
+    DWORD to_measure_length;
+    HFONT hfont, oldhfont;
+    SIZE sizeaux = { 0 };
+    int i = index, fitaux = 0;
+    struct gdip_font_link_section *section;
+
+    size->cx = 0;
+    size->cy = 0;
+
+    if (fit)
+        *fit = 0;
+
+    LIST_FOR_EACH_ENTRY(section, &info->font_link_info.sections, struct gdip_font_link_section, entry)
+    {
+        if (i >= section->end) continue;
+
+        to_measure_length = min(length - (i - index), section->end - i);
+
+        get_font_hfont(info->graphics, section->font, NULL, &hfont, NULL, NULL);
+        oldhfont = SelectObject(info->hdc, hfont);
+        GetTextExtentExPointW(info->hdc, &info->string[i], to_measure_length, max_ext, &fitaux, NULL, &sizeaux);
+        SelectObject(info->hdc, oldhfont);
+        DeleteObject(hfont);
+
+        max_ext -= sizeaux.cx;
+        if (fit)
+            *fit += fitaux;
+        size->cx += sizeaux.cx;
+        size->cy = max(size->cy, sizeaux.cy);
+
+        i += to_measure_length;
+        if ((i - index) >= length || fitaux < to_measure_length) break;
+    }
+}
+
+static void release_font_link_info(struct gdip_font_link_info *font_link_info)
+{
+    struct list *entry;
+
+    while ((entry = list_head(&font_link_info->sections)))
+    {
+        struct gdip_font_link_section *section = LIST_ENTRY(entry, struct gdip_font_link_section, entry);
+        list_remove(entry);
+        if (section->font != font_link_info->base_font)
+            GdipDeleteFont(section->font);
+        free(section);
+    }
+}
+
+GpStatus gdip_format_string(GpGraphics *graphics, HDC hdc,
     GDIPCONST WCHAR *string, INT length, GDIPCONST GpFont *font,
     GDIPCONST RectF *rect, GDIPCONST GpStringFormat *format, int ignore_empty_clip,
     gdip_format_string_callback callback, void *user_data)
@@ -5214,14 +5318,25 @@ GpStatus gdip_format_string(HDC hdc,
     INT hotkeyprefix_count=0;
     INT hotkeyprefix_pos=0, hotkeyprefix_end_pos=0;
     BOOL seen_prefix = FALSE, unixstyle_newline = TRUE;
+    struct gdip_format_string_info info;
+
+    info.graphics = graphics;
+    info.hdc = hdc;
+    info.rect = rect;
+    info.bounds = &bounds;
+    info.user_data = user_data;
 
     if(length == -1) length = lstrlenW(string);
 
     stringdup = calloc(length + 1, sizeof(WCHAR));
     if(!stringdup) return OutOfMemory;
 
+    info.string = stringdup;
+
     if (!format)
         format = &default_drawstring_format;
+
+    info.format = format;
 
     nwidth = (int)(rect->Width + 0.005f);
     nheight = (int)(rect->Height + 0.005f);
@@ -5278,9 +5393,10 @@ GpStatus gdip_format_string(HDC hdc,
 
     halign = format->align;
 
+    generate_font_link_info(&info, length, font);
+
     while(sum < length){
-        GetTextExtentExPointW(hdc, stringdup + sum, length - sum,
-                              nwidth, &fit, NULL, &size);
+        font_link_get_text_extent_point(&info, sum, length - sum, nwidth, &fit, &size);
         fitcpy = fit;
 
         if(fit == 0)
@@ -5328,8 +5444,7 @@ GpStatus gdip_format_string(HDC hdc,
         else
             lineend = fit;
 
-        GetTextExtentExPointW(hdc, stringdup + sum, lineend,
-                              nwidth, &j, NULL, &size);
+        font_link_get_text_extent_point(&info, sum, lineend, nwidth, &j, &size);
 
         bounds.Width = size.cx;
 
@@ -5362,10 +5477,13 @@ GpStatus gdip_format_string(HDC hdc,
             if (hotkeyprefix_offsets[hotkeyprefix_end_pos] >= sum + lineend)
                 break;
 
-        stat = callback(hdc, stringdup, sum, lineend,
-            font, rect, format, lineno, &bounds,
-            &hotkeyprefix_offsets[hotkeyprefix_pos],
-            hotkeyprefix_end_pos-hotkeyprefix_pos, user_data);
+        info.index = sum;
+        info.length = lineend;
+        info.lineno = lineno;
+        info.underlined_indexes = &hotkeyprefix_offsets[hotkeyprefix_pos];
+        info.underlined_index_count = hotkeyprefix_end_pos-hotkeyprefix_pos;
+
+        stat = callback(&info);
 
         if (stat != Ok)
             break;
@@ -5394,6 +5512,7 @@ GpStatus gdip_format_string(HDC hdc,
             break;
     }
 
+    release_font_link_info(&info.font_link_info);
     free(stringdup);
     free(hotkeyprefix_offsets);
 
@@ -5428,35 +5547,30 @@ struct measure_ranges_args {
     REAL rel_width, rel_height;
 };
 
-static GpStatus measure_ranges_callback(HDC hdc,
-    GDIPCONST WCHAR *string, INT index, INT length, GDIPCONST GpFont *font,
-    GDIPCONST RectF *rect, GDIPCONST GpStringFormat *format,
-    INT lineno, const RectF *bounds, INT *underlined_indexes,
-    INT underlined_index_count, void *user_data)
+static GpStatus measure_ranges_callback(struct gdip_format_string_info *info)
 {
     int i;
     GpStatus stat = Ok;
-    struct measure_ranges_args *args = user_data;
+    struct measure_ranges_args *args = info->user_data;
+    CharacterRange *ranges = info->format->character_ranges;
 
-    for (i=0; i<format->range_count; i++)
+    for (i=0; i < info->format->range_count; i++)
     {
-        INT range_start = max(index, format->character_ranges[i].First);
-        INT range_end = min(index+length, format->character_ranges[i].First+format->character_ranges[i].Length);
+        INT range_start = max(info->index, ranges[i].First);
+        INT range_end = min(info->index + info->length, ranges[i].First + ranges[i].Length);
         if (range_start < range_end)
         {
             GpRectF range_rect;
             SIZE range_size;
 
-            range_rect.Y = bounds->Y / args->rel_height;
-            range_rect.Height = bounds->Height / args->rel_height;
+            range_rect.Y = info->bounds->Y / args->rel_height;
+            range_rect.Height = info->bounds->Height / args->rel_height;
 
-            GetTextExtentExPointW(hdc, string + index, range_start - index,
-                                  INT_MAX, NULL, NULL, &range_size);
-            range_rect.X = (bounds->X + range_size.cx) / args->rel_width;
+            font_link_get_text_extent_point(info, info->index, range_start - info->index, INT_MAX, NULL, &range_size);
+            range_rect.X = (info->bounds->X + range_size.cx) / args->rel_width;
 
-            GetTextExtentExPointW(hdc, string + index, range_end - index,
-                                  INT_MAX, NULL, NULL, &range_size);
-            range_rect.Width = (bounds->X + range_size.cx) / args->rel_width - range_rect.X;
+            font_link_get_text_extent_point(info, info->index, range_end - info->index, INT_MAX, NULL, &range_size);
+            range_rect.Width = (info->bounds->X + range_size.cx) / args->rel_width - range_rect.X;
 
             stat = GdipCombineRegionRect(args->regions[i], &range_rect, CombineModeUnion);
             if (stat != Ok)
@@ -5532,7 +5646,7 @@ GpStatus WINGDIPAPI GdipMeasureCharacterRanges(GpGraphics* graphics,
 
     gdi_transform_acquire(graphics);
 
-    stat = gdip_format_string(hdc, string, length, font, &scaled_rect, stringFormat,
+    stat = gdip_format_string(graphics, hdc, string, length, font, &scaled_rect, stringFormat,
         (stringFormat->attr & StringFormatFlagsNoClip) != 0, measure_ranges_callback, &args);
 
     gdi_transform_release(graphics);
@@ -5553,17 +5667,13 @@ struct measure_string_args {
     REAL rel_width, rel_height;
 };
 
-static GpStatus measure_string_callback(HDC hdc,
-    GDIPCONST WCHAR *string, INT index, INT length, GDIPCONST GpFont *font,
-    GDIPCONST RectF *rect, GDIPCONST GpStringFormat *format,
-    INT lineno, const RectF *bounds, INT *underlined_indexes,
-    INT underlined_index_count, void *user_data)
+static GpStatus measure_string_callback(struct gdip_format_string_info *info)
 {
-    struct measure_string_args *args = user_data;
+    struct measure_string_args *args = info->user_data;
     REAL new_width, new_height;
 
-    new_width = bounds->Width / args->rel_width;
-    new_height = (bounds->Height + bounds->Y) / args->rel_height - args->bounds->Y;
+    new_width = info->bounds->Width / args->rel_width;
+    new_height = (info->bounds->Height + info->bounds->Y) / args->rel_height - args->bounds->Y;
 
     if (new_width > args->bounds->Width)
         args->bounds->Width = new_width;
@@ -5572,7 +5682,7 @@ static GpStatus measure_string_callback(HDC hdc,
         args->bounds->Height = new_height;
 
     if (args->codepointsfitted)
-        *args->codepointsfitted = index + length;
+        *args->codepointsfitted = info->index + info->length;
 
     if (args->linesfilled)
         (*args->linesfilled)++;
@@ -5646,7 +5756,7 @@ GpStatus WINGDIPAPI GdipMeasureString(GpGraphics *graphics,
 
     gdi_transform_acquire(graphics);
 
-    gdip_format_string(hdc, string, length, font, &scaled_rect, format, TRUE,
+    gdip_format_string(graphics, hdc, string, length, font, &scaled_rect, format, TRUE,
         measure_string_callback, &args);
 
     gdi_transform_release(graphics);
@@ -5667,52 +5777,62 @@ GpStatus WINGDIPAPI GdipMeasureString(GpGraphics *graphics,
 }
 
 struct draw_string_args {
-    GpGraphics *graphics;
     GDIPCONST GpBrush *brush;
     REAL x, y, rel_width, rel_height, ascent;
 };
 
-static GpStatus draw_string_callback(HDC hdc,
-    GDIPCONST WCHAR *string, INT index, INT length, GDIPCONST GpFont *font,
-    GDIPCONST RectF *rect, GDIPCONST GpStringFormat *format,
-    INT lineno, const RectF *bounds, INT *underlined_indexes,
-    INT underlined_index_count, void *user_data)
+static GpStatus draw_string_callback(struct gdip_format_string_info *info)
 {
-    struct draw_string_args *args = user_data;
+    struct draw_string_args *args = info->user_data;
+    int i = info->index;
     PointF position;
-    GpStatus stat;
+    SIZE size;
+    DWORD to_draw_length;
+    struct gdip_font_link_section *section;
+    GpStatus stat = Ok;
 
-    position.X = args->x + bounds->X / args->rel_width;
-    position.Y = args->y + bounds->Y / args->rel_height + args->ascent;
+    position.X = args->x + info->bounds->X / args->rel_width;
+    position.Y = args->y + info->bounds->Y / args->rel_height + args->ascent;
 
-    stat = draw_driver_string(args->graphics, &string[index], length, font, format,
-        args->brush, &position,
-        DriverStringOptionsCmapLookup|DriverStringOptionsRealizedAdvance, NULL);
+    LIST_FOR_EACH_ENTRY(section, &info->font_link_info.sections, struct gdip_font_link_section, entry)
+    {
+        if (i >= section->end) continue;
 
-    if (stat == Ok && underlined_index_count)
+        to_draw_length = min(info->length - (i - info->index), section->end - i);
+        TRACE("index %d, todraw %ld, used %s\n", i, to_draw_length, section->font == info->font_link_info.base_font ? "base font" : "map");
+        font_link_get_text_extent_point(info, i, to_draw_length, 0, NULL, &size);
+        stat = draw_driver_string(info->graphics, &info->string[i], to_draw_length,
+            section->font, info->format, args->brush, &position,
+            DriverStringOptionsCmapLookup|DriverStringOptionsRealizedAdvance, NULL);
+        position.X += size.cx / args->rel_width;
+        i += to_draw_length;
+        if (stat != Ok || (i - info->index) >= info->length) break;
+    }
+
+    if (stat == Ok && info->underlined_index_count)
     {
         OUTLINETEXTMETRICW otm;
         REAL underline_y, underline_height;
         int i;
 
-        GetOutlineTextMetricsW(hdc, sizeof(otm), &otm);
+        GetOutlineTextMetricsW(info->hdc, sizeof(otm), &otm);
 
         underline_height = otm.otmsUnderscoreSize / args->rel_height;
         underline_y = position.Y - otm.otmsUnderscorePosition / args->rel_height - underline_height / 2;
 
-        for (i=0; i<underlined_index_count; i++)
+        for (i=0; i<info->underlined_index_count; i++)
         {
             REAL start_x, end_x;
             SIZE text_size;
-            INT ofs = underlined_indexes[i] - index;
+            INT ofs = info->underlined_indexes[i] - info->index;
 
-            GetTextExtentExPointW(hdc, string + index, ofs, INT_MAX, NULL, NULL, &text_size);
+            font_link_get_text_extent_point(info, info->index, ofs, INT_MAX, NULL, &text_size);
             start_x = text_size.cx / args->rel_width;
 
-            GetTextExtentExPointW(hdc, string + index, ofs+1, INT_MAX, NULL, NULL, &text_size);
+            font_link_get_text_extent_point(info, info->index, ofs+1, INT_MAX, NULL, &text_size);
             end_x = text_size.cx / args->rel_width;
 
-            GdipFillRectangle(args->graphics, (GpBrush*)args->brush, position.X+start_x, underline_y, end_x-start_x, underline_height);
+            GdipFillRectangle(info->graphics, (GpBrush*)args->brush, position.X+start_x, underline_y, end_x-start_x, underline_height);
         }
     }
 
@@ -5810,7 +5930,6 @@ GpStatus WINGDIPAPI GdipDrawString(GpGraphics *graphics, GDIPCONST WCHAR *string
     get_font_hfont(graphics, font, format, &gdifont, NULL, NULL);
     SelectObject(hdc, gdifont);
 
-    args.graphics = graphics;
     args.brush = brush;
 
     args.x = rect->X;
@@ -5824,7 +5943,7 @@ GpStatus WINGDIPAPI GdipDrawString(GpGraphics *graphics, GDIPCONST WCHAR *string
     GetTextMetricsW(hdc, &textmetric);
     args.ascent = textmetric.tmAscent / rel_height;
 
-    gdip_format_string(hdc, string, length, font, &scaled_rect, format, TRUE,
+    gdip_format_string(graphics, hdc, string, length, font, &scaled_rect, format, TRUE,
         draw_string_callback, &args);
 
     gdi_transform_release(graphics);
