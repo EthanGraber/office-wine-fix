@@ -39,21 +39,38 @@ HRESULT WINAPI SLGetLicensingStatusInformation(HSLC handle, const SLID *app, con
     return SL_E_RIGHT_NOT_CONSUMED;
 }
 
-HRESULT WINAPI SLGetPolicyInformation(HSLC handle, PCWSTR policyName, SLDATATYPE* slDataType, UINT* dataSize, PBYTE* data)
+HRESULT WINAPI SLGetPolicyInformation(HSLC handle, PCWSTR policyName, SLDATATYPE *slDataType, UINT *dataSize, PBYTE *data)
 {
     FIXME("(%p %s %p %p %p) stub\n", handle, debugstr_w(policyName), slDataType, dataSize, data);
 
     return SL_E_VALUE_NOT_FOUND;
 }
 
-HRESULT WINAPI SLGetPolicyInformationDWORD(HSLC handle, PCWSTR policyName, DWORD* ret)
+HRESULT WINAPI SLGetPolicyInformationDWORD(HSLC handle, PCWSTR policyName, DWORD *ret)
 {
+    UNICODE_STRING nameW;
+    NTSTATUS status;
+    ULONG type, len;
+
     FIXME("(%p %s %p) stub\n", handle, debugstr_w(policyName), ret);
 
-    return SL_E_VALUE_NOT_FOUND;
+    if(!handle || !policyName || !ret)
+        return E_INVALIDARG;
+    if (!policyName[0])
+        return SL_E_RIGHT_NOT_GRANTED;
+
+    RtlInitUnicodeString(&nameW, policyName);
+    status = NtQueryLicenseValue(&nameW, &type, ret, sizeof(DWORD), &len);
+
+    if(status == STATUS_OBJECT_NAME_NOT_FOUND)
+        return SL_E_VALUE_NOT_FOUND;
+    if((!status || status == STATUS_BUFFER_TOO_SMALL) && (type != REG_DWORD))
+        return SL_E_DATATYPE_MISMATCHED;
+
+    return status ? E_FAIL : S_OK;
 }
 
-HRESULT WINAPI SLLoadApplicationPolicies(const SLID* app, const SLID* product, DWORD flags, HSLP* handle)
+HRESULT WINAPI SLLoadApplicationPolicies(const SLID *app, const SLID *product, DWORD flags, HSLP *handle)
 {
     FIXME("(%p %p %lx %p) stub\n", app, product, flags, handle);
 
@@ -79,7 +96,7 @@ HRESULT WINAPI SLClose(HSLC handle)
     return S_OK;
 }
 
-HRESULT WINAPI SLConsumeRight(HSLC handle, const SLID* app, const SLID* product, PCWSTR rightName, PVOID reserved)
+HRESULT WINAPI SLConsumeRight(HSLC handle, const SLID *app, const SLID *product, PCWSTR rightName, PVOID reserved)
 {
     FIXME("(%p, %p, %p, %s, %p) stub\n", handle, app, product, debugstr_w(rightName), reserved);
 
@@ -100,7 +117,7 @@ HRESULT WINAPI SLPersistApplicationPolicies(const SLID *app, const SLID *product
     return S_OK;
 }
 
-HRESULT WINAPI SLSetAuthenticationData(HSLC* handle, UINT* dataSize, PBYTE* data) 
+HRESULT WINAPI SLSetAuthenticationData(HSLC *handle, UINT *dataSize, PBYTE *data) 
 {
     FIXME("(%p %p %p) stub\n", handle, dataSize, data);
 
