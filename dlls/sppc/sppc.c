@@ -70,6 +70,18 @@ HRESULT WINAPI SLGetPolicyInformationDWORD(HSLC handle, PCWSTR policyName, DWORD
     return status ? E_FAIL : S_OK;
 }
 
+HRESULT WINAPI SLInstallLicense(HSLC handle, UINT blobSize, PBYTE *pbLicenseBlob, SLID *pLicenseField)
+{
+    /* HANDLE key;
+    OBJECT_ATTRIBUTES attr;
+    UNICODE_STRING name; */
+
+    FIXME("(%p %lx %p %p) stub\n", handle, blobSize, pbLicenseBlob, pLicenseField);
+
+    /* InitializeObjectAttributes(&attr, &name, OBJ_CASE_INSENSITIVE, 0, NULL);
+    NtCreateKey(&key, KEY_ALL_ACCESS, &attr, ULONG, const UNICODE_STRING *, ULONG, PULONG) */
+}
+
 HRESULT WINAPI SLLoadApplicationPolicies(const SLID *app, const SLID *product, DWORD flags, HSLP *handle)
 {
     FIXME("(%p %p %lx %p) stub\n", app, product, flags, handle);

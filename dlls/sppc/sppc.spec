@@ -46,7 +46,7 @@
 @ stub SLGetProductSkuInformation
 @ stub SLGetSLIDList
 @ stub SLGetServiceInformation
-@ stub SLInstallLicense
+@ stdcall SLInstallLicense(ptr long ptr ptr)
 @ stub SLInstallProofOfPurchase
 @ stub SLInstallProofOfPurchaseEx
 @ stub SLIsGenuineLocalEx
