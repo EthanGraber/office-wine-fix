@@ -44,7 +44,7 @@
 @ stdcall SLGetPolicyInformation(ptr wstr ptr ptr ptr)
 @ stdcall SLGetPolicyInformationDWORD(ptr wstr ptr)
 @ stub SLGetProductSkuInformation
-@ stub SLGetSLIDList
+@ stdcall SLGetSLIDList(ptr long ptr long ptr ptr)
 @ stub SLGetServiceInformation
 @ stdcall SLInstallLicense(ptr long ptr ptr)
 @ stub SLInstallProofOfPurchase

@@ -70,16 +70,26 @@ HRESULT WINAPI SLGetPolicyInformationDWORD(HSLC handle, PCWSTR policyName, DWORD
     return status ? E_FAIL : S_OK;
 }
 
+HRESULT WINAPI SLGetSLIDList(HSLC handle, SLIDTYPE queryIdType, const SLID* inputId, SLIDTYPE returnIdType, UINT* numReturned, SLID** returnedIds)
+{
+    FIXME("(%p %u %p %u %p %p) stub\n", handle, queryIdType, inputId, returnIdType, numReturned, returnedIds);
+
+    return SL_E_NOT_SUPPORTED;
+}
+
+
 HRESULT WINAPI SLInstallLicense(HSLC handle, UINT blobSize, PBYTE *pbLicenseBlob, SLID *pLicenseField)
 {
     /* HANDLE key;
     OBJECT_ATTRIBUTES attr;
     UNICODE_STRING name; */
 
-    FIXME("(%p %lx %p %p) stub\n", handle, blobSize, pbLicenseBlob, pLicenseField);
+    FIXME("(%p %u %p %p) stub\n", handle, blobSize, pbLicenseBlob, pLicenseField);
 
     /* InitializeObjectAttributes(&attr, &name, OBJ_CASE_INSENSITIVE, 0, NULL);
     NtCreateKey(&key, KEY_ALL_ACCESS, &attr, ULONG, const UNICODE_STRING *, ULONG, PULONG) */
+
+    return S_OK;
 }
 
 HRESULT WINAPI SLLoadApplicationPolicies(const SLID *app, const SLID *product, DWORD flags, HSLP *handle)
