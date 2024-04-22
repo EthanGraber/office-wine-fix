@@ -78,17 +78,31 @@ HRESULT WINAPI SLGetSLIDList(HSLC handle, SLIDTYPE queryIdType, const SLID* inpu
 }
 
 
-HRESULT WINAPI SLInstallLicense(HSLC handle, UINT blobSize, PBYTE *pbLicenseBlob, SLID *pLicenseField)
+HRESULT WINAPI SLInstallLicense(HSLC handle, UINT blobSize, const BYTE *pbLicenseBlob, SLID *pLicenseField)
 {
-    /* HANDLE key;
+    static const WCHAR nameW[] = {'\\','R','e','g','i','s','t','r','y','\\',
+                                  'M','a','c','h','i','n','e','\\',
+                                  'S','o','f','t','w','a','r','e','\\',
+                                  'W','i','n','e','\\','L','i','c','e','n','s','e',
+                                  'I','n','f','o','r','m','a','t','i','o','n',0};
+    HANDLE key;
     OBJECT_ATTRIBUTES attr;
-    UNICODE_STRING name; */
+    UNICODE_STRING keyW = RTL_CONSTANT_STRING(nameW);
 
-    FIXME("(%p %u %p %p) stub\n", handle, blobSize, pbLicenseBlob, pLicenseField);
+    FIXME("(%p %u %p %p) stub \n", handle, blobSize, pbLicenseBlob, pLicenseField);
 
-    /* InitializeObjectAttributes(&attr, &name, OBJ_CASE_INSENSITIVE, 0, NULL);
-    NtCreateKey(&key, KEY_ALL_ACCESS, &attr, ULONG, const UNICODE_STRING *, ULONG, PULONG) */
 
+    /* InitializeObjectAttributes(&attr, &keyW, OBJ_CASE_INSENSITIVE, 0, NULL);
+    if(NtCreateKey(&key, KEY_ALL_ACCESS, &attr, 0, NULL, REG_OPTION_NON_VOLATILE, NULL) != STATUS_SUCCESS){
+        return E_INVALIDARG; 
+    }
+
+    NtSetValueKey(key, const UNICODE_STRING *, 0, ULONG, const void *, ULONG)
+
+
+
+    if (key) NtClose(key);  
+ */
     return S_OK;
 }
 
