@@ -39,21 +39,74 @@ HRESULT WINAPI SLGetLicensingStatusInformation(HSLC handle, const SLID *app, con
     return SL_E_RIGHT_NOT_CONSUMED;
 }
 
-HRESULT WINAPI SLGetPolicyInformation(HSLC handle, PCWSTR policyName, SLDATATYPE* slDataType, UINT* dataSize, PBYTE* data)
+HRESULT WINAPI SLGetPolicyInformation(HSLC handle, PCWSTR policyName, SLDATATYPE *slDataType, UINT *dataSize, PBYTE *data)
 {
     FIXME("(%p %s %p %p %p) stub\n", handle, debugstr_w(policyName), slDataType, dataSize, data);
 
     return SL_E_VALUE_NOT_FOUND;
 }
 
-HRESULT WINAPI SLGetPolicyInformationDWORD(HSLC handle, PCWSTR policyName, DWORD* ret)
+HRESULT WINAPI SLGetPolicyInformationDWORD(HSLC handle, PCWSTR policyName, DWORD *ret)
 {
+    UNICODE_STRING nameW;
+    NTSTATUS status;
+    ULONG type, len;
+
     FIXME("(%p %s %p) stub\n", handle, debugstr_w(policyName), ret);
 
-    return SL_E_VALUE_NOT_FOUND;
+    if(!handle || !policyName || !ret)
+        return E_INVALIDARG;
+    if (!policyName[0])
+        return SL_E_RIGHT_NOT_GRANTED;
+
+    RtlInitUnicodeString(&nameW, policyName);
+    status = NtQueryLicenseValue(&nameW, &type, ret, sizeof(DWORD), &len);
+
+    if(status == STATUS_OBJECT_NAME_NOT_FOUND)
+        return SL_E_VALUE_NOT_FOUND;
+    if((!status || status == STATUS_BUFFER_TOO_SMALL) && (type != REG_DWORD))
+        return SL_E_DATATYPE_MISMATCHED;
+
+    return status ? E_FAIL : S_OK;
 }
 
-HRESULT WINAPI SLLoadApplicationPolicies(const SLID* app, const SLID* product, DWORD flags, HSLP* handle)
+HRESULT WINAPI SLGetSLIDList(HSLC handle, SLIDTYPE queryIdType, const SLID* inputId, SLIDTYPE returnIdType, UINT* numReturned, SLID** returnedIds)
+{
+    FIXME("(%p %u %p %u %p %p) stub\n", handle, queryIdType, inputId, returnIdType, numReturned, returnedIds);
+
+    return SL_E_NOT_SUPPORTED;
+}
+
+
+HRESULT WINAPI SLInstallLicense(HSLC handle, UINT blobSize, const BYTE *pbLicenseBlob, SLID *pLicenseField)
+{
+    static const WCHAR nameW[] = {'\\','R','e','g','i','s','t','r','y','\\',
+                                  'M','a','c','h','i','n','e','\\',
+                                  'S','o','f','t','w','a','r','e','\\',
+                                  'W','i','n','e','\\','L','i','c','e','n','s','e',
+                                  'I','n','f','o','r','m','a','t','i','o','n',0};
+    HANDLE key;
+    OBJECT_ATTRIBUTES attr;
+    UNICODE_STRING keyW = RTL_CONSTANT_STRING(nameW);
+
+    FIXME("(%p %u %p %p) stub \n", handle, blobSize, pbLicenseBlob, pLicenseField);
+
+
+    /* InitializeObjectAttributes(&attr, &keyW, OBJ_CASE_INSENSITIVE, 0, NULL);
+    if(NtCreateKey(&key, KEY_ALL_ACCESS, &attr, 0, NULL, REG_OPTION_NON_VOLATILE, NULL) != STATUS_SUCCESS){
+        return E_INVALIDARG; 
+    }
+
+    NtSetValueKey(key, const UNICODE_STRING *, 0, ULONG, const void *, ULONG)
+
+
+
+    if (key) NtClose(key);  
+ */
+    return S_OK;
+}
+
+HRESULT WINAPI SLLoadApplicationPolicies(const SLID *app, const SLID *product, DWORD flags, HSLP *handle)
 {
     FIXME("(%p %p %lx %p) stub\n", app, product, flags, handle);
 
@@ -79,7 +132,7 @@ HRESULT WINAPI SLClose(HSLC handle)
     return S_OK;
 }
 
-HRESULT WINAPI SLConsumeRight(HSLC handle, const SLID* app, const SLID* product, PCWSTR rightName, PVOID reserved)
+HRESULT WINAPI SLConsumeRight(HSLC handle, const SLID *app, const SLID *product, PCWSTR rightName, PVOID reserved)
 {
     FIXME("(%p, %p, %p, %s, %p) stub\n", handle, app, product, debugstr_w(rightName), reserved);
 
@@ -100,7 +153,7 @@ HRESULT WINAPI SLPersistApplicationPolicies(const SLID *app, const SLID *product
     return S_OK;
 }
 
-HRESULT WINAPI SLSetAuthenticationData(HSLC* handle, UINT* dataSize, PBYTE* data) 
+HRESULT WINAPI SLSetAuthenticationData(HSLC *handle, UINT *dataSize, PBYTE *data) 
 {
     FIXME("(%p %p %p) stub\n", handle, dataSize, data);
 
