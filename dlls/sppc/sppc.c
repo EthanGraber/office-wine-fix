@@ -88,8 +88,17 @@ HRESULT WINAPI SLInstallLicense(HSLC handle, UINT blobSize, const BYTE *pbLicens
     HANDLE key;
     OBJECT_ATTRIBUTES attr;
     UNICODE_STRING keyW = RTL_CONSTANT_STRING(nameW);
+    UINT i = 0;
 
     FIXME("(%p %u %p %p) stub \n", handle, blobSize, pbLicenseBlob, pLicenseField);
+
+    FIXME("==== blob dump ====");
+    if(blobSize && pbLicenseBlob){
+        for(; i < blobSize; ++i) {
+            FIXME("blob[%u] = 0x%2x \n", blobSize, pbLicenseBlob[i]);
+        }
+    }
+    FIXME("==== end blob dump ====");
 
 
     /* InitializeObjectAttributes(&attr, &keyW, OBJ_CASE_INSENSITIVE, 0, NULL);
