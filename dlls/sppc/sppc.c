@@ -92,14 +92,13 @@ HRESULT WINAPI SLInstallLicense(HSLC handle, UINT blobSize, const BYTE *pbLicens
 
     FIXME("(%p %u %p %p) stub \n", handle, blobSize, pbLicenseBlob, pLicenseField);
 
-    FIXME("==== blob dump ====");
-    if(blobSize && pbLicenseBlob){
-        for(; i < blobSize; ++i) {
-            FIXME("blob[%u] = 0x%2x \n", blobSize, pbLicenseBlob[i]);
-        }
-    }
-    FIXME("==== end blob dump ====");
-
+    /*  FIXME("==== blob dump ====");
+     if(blobSize && pbLicenseBlob){
+         for(; i < blobSize; ++i) {
+             FIXME("blob[%u] = 0x%2x \n", blobSize, pbLicenseBlob[i]);
+         }
+     }
+     FIXME("==== end blob dump ===="); */
 
     /* InitializeObjectAttributes(&attr, &keyW, OBJ_CASE_INSENSITIVE, 0, NULL);
     if(NtCreateKey(&key, KEY_ALL_ACCESS, &attr, 0, NULL, REG_OPTION_NON_VOLATILE, NULL) != STATUS_SUCCESS){
