@@ -897,6 +897,11 @@ BOOL WINAPI /* DECLSPEC_HOTPATCH */ GetProcessMitigationPolicy( HANDLE process, 
                                                           void *buffer, SIZE_T length )
 {
     FIXME( "(%p, %u, %p, %Iu): stub\n", process, policy, buffer, length );
+
+    memset(buffer, 0, length);
+
+    FIXME("zeroed out the buffer\n");
+
     return TRUE;
 }
 
